@@ -290,6 +290,7 @@ export default function ScannerScreen({
   const conf = result?.final?.confidence ?? 0;
   const xai = result?.explanation;
   const attack = result?.attack;
+  const communityReports = result?.community_reports;
   const attackTheme = attack ? ATTACK_SEVERITY_THEME[attack.severity] : null;
   const googleWebRisk = result?.external_threat_intelligence?.google_web_risk;
   const isUrlResult = parsedContent?.type === "url";
@@ -465,6 +466,21 @@ export default function ScannerScreen({
             <View style={[s.summaryBox, { borderLeftColor: theme.main }]}>
               <Text style={s.summaryText}>{xai.summary}</Text>
             </View>
+          ) : null}
+
+          {communityReports?.matched ? (
+            <>
+              <Text style={s.sectionLabel}>Shared report database</Text>
+              <View style={s.communityReportCard}>
+                <Text style={s.communityReportTitle}>Reported suspicious QR</Text>
+                <Text style={s.communityReportText}>
+                  {communityReports.report_count} report(s) found for this QR.
+                </Text>
+                <Text style={s.communityReportText}>
+                  Reasons: {communityReports.reasons.join(", ")}
+                </Text>
+              </View>
+            </>
           ) : null}
 
           {canReportScan ? (
@@ -994,6 +1010,16 @@ const s = StyleSheet.create({
   },
   webRiskTitle: { color: "#b91c1c", fontSize: 14, fontWeight: "700", marginBottom: 4 },
   webRiskText: { color: TEXT, fontSize: 12.5, lineHeight: 18 },
+  communityReportCard: {
+    backgroundColor: "#fff7ed",
+    borderRadius: 12,
+    borderWidth: 0.5,
+    borderColor: "#fed7aa",
+    padding: 12,
+    marginBottom: 4,
+  },
+  communityReportTitle: { color: "#c2410c", fontSize: 14, fontWeight: "700", marginBottom: 4 },
+  communityReportText: { color: TEXT, fontSize: 12.5, lineHeight: 18 },
 
   sectionLabel: {
     fontSize: 10,

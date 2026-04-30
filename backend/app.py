@@ -12,7 +12,7 @@ import jwt
 from flask import Flask, g, has_request_context, jsonify, request
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import func, inspect, text
+from sqlalchemy import func, inspect, or_, text
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from model.attack_classifier import classify_attack_type
@@ -53,6 +53,7 @@ REPORT_REASONS = {
     "phishing",
     "other",
 }
+COMMUNITY_REPORTS_UNSAFE_THRESHOLD = int(os.environ.get("COMMUNITY_REPORTS_UNSAFE_THRESHOLD", "2"))
 
 
 class User(db.Model):
@@ -402,9 +403,20 @@ def build_scan_result(qr_text):
         final_score = max(final_score, 0.95)
         final_conf = max(final_conf, 0.95)
 
-    final_status = classify_score(final_score)
     attack = classify_attack_type(features, qr_text)
+    if attack["severity"] == "high" and attack["type"] != "Legitimate":
+        final_score = max(final_score, 0.85)
+        final_conf = max(final_conf, 0.9)
+    elif attack["severity"] == "medium" and attack["type"] != "Legitimate":
+        final_score = max(final_score, 0.55)
+        final_conf = max(final_conf, 0.75)
+
+    final_status = classify_score(final_score)
     xai = explain(features, final_score, final_status, top_n=4)
+    if attack["severity"] in {"high", "medium"} and attack["type"] != "Legitimate":
+        xai["reasons"].insert(0, f"Detected {attack['type'].lower()} pattern.")
+        if attack["severity"] == "high":
+            xai["summary"] = f"{attack['type']} indicators were found. {xai['summary']}"
     if google_web_risk["matched"]:
         threat_list = ", ".join(google_web_risk["threat_types"])
         xai["summary"] = (
@@ -440,6 +452,79 @@ def build_scan_result(qr_text):
             "feature_contributions": xai["feature_contributions"],
         },
     }
+
+
+def get_report_intelligence(*qr_values):
+    values = [value.strip() for value in qr_values if value and value.strip()]
+    unique_values = list(dict.fromkeys(values))
+    if not unique_values:
+        return {
+            "matched": False,
+            "report_count": 0,
+            "reasons": [],
+            "latest_reported_at": None,
+            "warning": None,
+        }
+
+    reports = (
+        SuspiciousQRReport.query.filter(
+            or_(
+                SuspiciousQRReport.scanned_content.in_(unique_values),
+                SuspiciousQRReport.destination_url.in_(unique_values),
+            )
+        )
+        .order_by(SuspiciousQRReport.created_at.desc())
+        .all()
+    )
+
+    if not reports:
+        return {
+            "matched": False,
+            "report_count": 0,
+            "reasons": [],
+            "latest_reported_at": None,
+            "warning": None,
+        }
+
+    reasons = sorted({report.reason for report in reports})
+    return {
+        "matched": True,
+        "report_count": len(reports),
+        "reasons": reasons,
+        "latest_reported_at": reports[0].created_at.isoformat(),
+        "warning": "This QR has been reported by users as suspicious.",
+    }
+
+
+def apply_report_intelligence(scan_result, report_intelligence):
+    scan_result["community_reports"] = report_intelligence
+    if not report_intelligence["matched"]:
+        return scan_result
+
+    final = scan_result.setdefault("final", {})
+    if report_intelligence["report_count"] >= COMMUNITY_REPORTS_UNSAFE_THRESHOLD:
+        final["status"] = "Unsafe"
+        final["confidence"] = max(float(final.get("confidence") or 0), 95)
+        final["risk_score"] = max(float(final.get("risk_score") or 0), 95)
+    else:
+        final["status"] = "Suspicious" if final.get("status") == "Safe" else final.get("status", "Suspicious")
+        final["confidence"] = max(float(final.get("confidence") or 0), 75)
+        final["risk_score"] = max(float(final.get("risk_score") or 0), 55)
+
+    explanation = scan_result.setdefault("explanation", {})
+    reasons = explanation.setdefault("reasons", [])
+    reason_list = ", ".join(report_intelligence["reasons"])
+    report_reason = f"{report_intelligence['report_count']} user report(s) exist for this QR ({reason_list})."
+    if report_reason not in reasons:
+        reasons.insert(0, report_reason)
+
+    existing_summary = explanation.get("summary") or ""
+    if report_intelligence["report_count"] >= COMMUNITY_REPORTS_UNSAFE_THRESHOLD:
+        report_summary = "This QR has multiple reports in the shared suspicious QR database."
+    else:
+        report_summary = "This QR has one community report, so it has been marked suspicious for review."
+    explanation["summary"] = f"{report_summary} {existing_summary}".strip()
+    return scan_result
 
 
 def get_verified_qr_from_scanned_url(qr_text):
@@ -518,6 +603,10 @@ def scan():
         db.session.commit()
         scan_result = build_scan_result(verified_qr.destination_url)
         scan_result["qr_text"] = qr_text
+        apply_report_intelligence(
+            scan_result,
+            get_report_intelligence(qr_text, verified_qr.destination_url),
+        )
         scan_result["verified_qr"] = {
             "is_qrguard_code": True,
             "is_active": verified_qr.active,
@@ -535,6 +624,7 @@ def scan():
         return jsonify(scan_result)
 
     scan_result = build_scan_result(qr_text)
+    apply_report_intelligence(scan_result, get_report_intelligence(qr_text))
 
     return jsonify(scan_result)
 

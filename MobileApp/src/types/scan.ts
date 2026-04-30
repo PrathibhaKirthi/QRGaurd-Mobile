@@ -9,6 +9,13 @@ export type AttackInfo = { type: string; severity: "low" | "medium" | "high" };
 export type BackendResult = {
   qr_text?: string;
   final?: { status: "Safe" | "Suspicious" | "Unsafe"; confidence: number; risk_score: number };
+  community_reports?: {
+    matched: boolean;
+    report_count: number;
+    reasons: string[];
+    latest_reported_at?: string | null;
+    warning?: string | null;
+  };
   external_threat_intelligence?: {
     google_web_risk?: {
       provider: string;

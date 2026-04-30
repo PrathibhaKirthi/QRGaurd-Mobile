@@ -4,7 +4,13 @@ import re
 from typing import Dict
 from urllib.parse import urlparse
 
-BRAND_KEYWORDS = ("paypal", "apple", "microsoft")
+BRAND_KEYWORDS = ("google", "paypal", "apple", "microsoft")
+BRAND_DOMAINS = {
+    "google": ("google.com", "google.ie", "google.co.uk", "googleapis.com"),
+    "paypal": ("paypal.com", "paypal.me"),
+    "apple": ("apple.com",),
+    "microsoft": ("microsoft.com", "live.com", "office.com", "microsoftonline.com"),
+}
 CREDENTIAL_KEYWORDS = ("login", "verify", "account", "password")
 REDIRECT_KEYWORDS = ("redirect", "return", "target", "next", "continue", "url")
 
@@ -27,6 +33,8 @@ def _is_typosquatting_domain(domain: str) -> bool:
     """Detect simple brand-lookalike patterns in the domain."""
     if not domain:
         return False
+    if any(_is_allowed_brand_domain(domain, brand) for brand in BRAND_DOMAINS):
+        return False
 
     normalized = domain.replace(".", "").replace("-", "")
 
@@ -45,11 +53,15 @@ def _is_typosquatting_domain(domain: str) -> bool:
 
     common_digit_swaps = (
         re.search(r"g[0o]{2}gle", normalized),
-        re.search(r"paypa[l1i]", normalized),
+        re.search(r"paypa[1i]", normalized),
         re.search(r"app[l1i]e", normalized),
         re.search(r"micr[o0]soft", normalized),
     )
     return any(common_digit_swaps)
+
+
+def _is_allowed_brand_domain(domain: str, brand: str) -> bool:
+    return any(domain == allowed or domain.endswith(f".{allowed}") for allowed in BRAND_DOMAINS[brand])
 
 
 def classify_attack_type(features: dict, url: str) -> Dict[str, str]:
@@ -75,18 +87,22 @@ def classify_attack_type(features: dict, url: str) -> Dict[str, str]:
 
     query_markers = normalized_url.count("?") + normalized_url.count("=") + normalized_url.count("&")
     has_credential_keywords = any(keyword in normalized_url for keyword in CREDENTIAL_KEYWORDS)
-    has_brand_keyword = any(keyword in normalized_url for keyword in BRAND_KEYWORDS)
+    matched_brands = [brand for brand in BRAND_KEYWORDS if brand in normalized_url]
+    impersonated_brands = [
+        brand for brand in matched_brands if not _is_allowed_brand_domain(domain, brand)
+    ]
+    has_brand_keyword = bool(matched_brands)
     suspicious_brand_domain = has_ip or has_hyphen_in_domain or num_dots >= 3
     has_redirect_signal = "redirect" in normalized_url or query_markers >= 4
     has_exfiltration_signal = num_special_chars >= 6 or query_markers >= 7 or url_length >= 120
 
-    if has_credential_keywords:
+    if impersonated_brands and has_credential_keywords:
         return {"type": "Credential Harvesting", "severity": "high"}
 
-    if has_brand_keyword and suspicious_brand_domain:
+    if impersonated_brands and suspicious_brand_domain:
         return {"type": "Brand Impersonation", "severity": "high"}
 
-    if _is_typosquatting_domain(domain) or (num_digits >= 2 and has_brand_keyword):
+    if _is_typosquatting_domain(domain) or (num_digits >= 2 and bool(impersonated_brands)):
         return {"type": "Typosquatting", "severity": "high"}
 
     if has_exfiltration_signal:
