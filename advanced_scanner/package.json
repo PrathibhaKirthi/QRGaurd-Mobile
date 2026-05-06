@@ -1,0 +1,15 @@
+{
+  "name": "qrguard-advanced-scanner",
+  "version": "1.0.0",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "install:browsers": "playwright install chromium",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "ipaddr.js": "^2.2.0",
+    "playwright": "1.59.1"
+  }
+}
