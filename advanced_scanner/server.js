@@ -100,6 +100,7 @@ async function clickSafeCommonElements(page) {
       }
     } catch {
       // Ignore any errors - elements might not be present or interactable
+    }
   }
   return clicked;
 }
