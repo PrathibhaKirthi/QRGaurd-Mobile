@@ -38,7 +38,6 @@ def start_advanced_scan():
     target_url = (
         data.get("target_url")
         or data.get("url")
-        or (static_result.get("verified_qr") or {}).get("destination_url")
         or static_result.get("qr_text")
         or qr_text
     )

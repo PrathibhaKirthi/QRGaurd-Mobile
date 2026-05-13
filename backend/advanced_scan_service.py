@@ -16,6 +16,7 @@ from config import (
 )
 from extensions import db
 from models import AdvancedScan
+from scan_service import record_bad_qr_match
 
 
 def cleanup_expired_advanced_scans():
@@ -204,6 +205,12 @@ def run_advanced_scan_job(scan_id, flask_app=None):
                 scan_record.screenshot_blob = b64decode(screenshot_base64)
                 scan_record.screenshot_mime = screenshot_mime
             db.session.commit()
+            if llm_result.get("status") == "Unsafe":
+                record_bad_qr_match(
+                    scan_record.qr_text,
+                    {"final": llm_result},
+                    destination_url=evidence.get("final_url") or scan_record.target_url,
+                )
             send_expo_push_notification(scan_record.expo_push_token, scan_record.scan_id, llm_result)
         except Exception as error:
             scan_record.status = "failed"

@@ -1,6 +1,6 @@
 import axios from "axios";
 import * as SecureStore from "expo-secure-store";
-import type { BackendResult } from "../types/scan";
+import type { AdvancedScan, BackendResult } from "../types/scan";
 
 const API_BASE_URL = "http://172.20.10.3:5000";
 const TOKEN_KEY = "qrguard_auth_token";
@@ -21,39 +21,9 @@ export interface ScanResponse {
   message: string;
 }
 
-export type BusinessQRCode = {
-  id: number;
-  code_id: string;
-  title: string;
-  business_name: string;
-  destination_url: string;
-  description: string;
-  qr_type: "static";
-  active: boolean;
-  scan_count: number;
-  risk_score: number;
-  confidence: number;
-  verdict: "Safe" | "Suspicious" | "Unsafe" | "Unknown";
-  explanation_summary?: string;
-  verification_url: string;
-  qr_value: string;
-  created_at: string;
-  updated_at: string;
-};
-
-export type BusinessQRCodeInput = {
-  title: string;
-  business_name: string;
-  destination_url: string;
-  description: string;
-  qr_type: "static";
-  active?: boolean;
-};
-
 export type QRReportReason =
   | "fake_sticker"
   | "payment_scam"
-  | "wrong_business"
   | "phishing"
   | "other";
 
@@ -151,62 +121,78 @@ export async function scanURL(url: string, scanType = "url") {
   }
 }
 
+export async function startAdvancedScan(payload: {
+  url: string;
+  qr_text?: string;
+  static_result?: BackendResult;
+  expo_push_token?: string | null;
+}) {
+  try {
+    const response = await api.post<{ scan: AdvancedScan }>("/advanced-scan/start", payload);
+    return response.data.scan;
+  } catch (error) {
+    throw new Error(getErrorMessage(error, "Unable to start Advanced Scan."));
+  }
+}
+
+export async function fetchAdvancedScan(scanId: string) {
+  try {
+    const response = await api.get<{ scan: AdvancedScan }>(`/advanced-scan/${scanId}`);
+    return response.data.scan;
+  } catch (error) {
+    throw new Error(getErrorMessage(error, "Unable to load Advanced Scan."));
+  }
+}
+
+export async function markAdvancedScanViewed(scanId: string) {
+  try {
+    const response = await api.post<{ scan: AdvancedScan }>(`/advanced-scan/${scanId}/viewed`);
+    return response.data.scan;
+  } catch (error) {
+    throw new Error(getErrorMessage(error, "Unable to update Advanced Scan."));
+  }
+}
+
+export async function fetchCloudHistory() {
+  try {
+    const response = await api.get<{ history: unknown[] }>("/history");
+    return response.data.history;
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 401) {
+      throw new Error("Sign in to sync scan history across devices.");
+    }
+    throw new Error(getErrorMessage(error, "Unable to load cloud history."));
+  }
+}
+
+export async function saveCloudHistoryItem(payload: unknown) {
+  try {
+    const response = await api.post<{ history_item: unknown }>("/history", payload);
+    return response.data.history_item;
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 401) {
+      throw new Error("Sign in to save scan history to the cloud.");
+    }
+    throw new Error(getErrorMessage(error, "Unable to save cloud history."));
+  }
+}
+
+export async function clearCloudHistory() {
+  try {
+    await api.delete("/history");
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 401) {
+      throw new Error("Sign in to clear cloud history.");
+    }
+    throw new Error(getErrorMessage(error, "Unable to clear cloud history."));
+  }
+}
+
 export async function submitSuspiciousQRReport(payload: QRReportInput) {
   try {
     const response = await api.post("/reports", payload);
     return response.data.report;
   } catch (error) {
     throw new Error(getErrorMessage(error, "Unable to submit report."));
-  }
-}
-
-export async function fetchBusinessQRCodes() {
-  try {
-    const response = await api.get<{ qr_codes: BusinessQRCode[] }>("/business/qrcodes");
-    return response.data.qr_codes;
-  } catch (error) {
-    if (axios.isAxiosError(error) && error.response?.status === 401) {
-      await clearSession();
-      throw new Error("Your business session has expired. Please log in again.");
-    }
-    throw new Error(getErrorMessage(error, "Unable to load QR codes."));
-  }
-}
-
-export async function createBusinessQRCode(payload: BusinessQRCodeInput) {
-  try {
-    const response = await api.post<{ qr_code: BusinessQRCode }>("/business/qrcodes", payload);
-    return response.data.qr_code;
-  } catch (error) {
-    if (axios.isAxiosError(error) && error.response?.status === 401) {
-      await clearSession();
-      throw new Error("Your business session has expired. Please log in again.");
-    }
-    throw new Error(getErrorMessage(error, "Unable to create QR code."));
-  }
-}
-
-export async function updateBusinessQRCode(id: number, payload: BusinessQRCodeInput) {
-  try {
-    const response = await api.put<{ qr_code: BusinessQRCode }>(`/business/qrcodes/${id}`, payload);
-    return response.data.qr_code;
-  } catch (error) {
-    if (axios.isAxiosError(error) && error.response?.status === 401) {
-      await clearSession();
-      throw new Error("Your business session has expired. Please log in again.");
-    }
-    throw new Error(getErrorMessage(error, "Unable to update QR code."));
-  }
-}
-
-export async function deleteBusinessQRCode(id: number) {
-  try {
-    await api.delete(`/business/qrcodes/${id}`);
-  } catch (error) {
-    if (axios.isAxiosError(error) && error.response?.status === 401) {
-      await clearSession();
-      throw new Error("Your business session has expired. Please log in again.");
-    }
-    throw new Error(getErrorMessage(error, "Unable to delete QR code."));
   }
 }

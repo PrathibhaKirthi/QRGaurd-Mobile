@@ -98,6 +98,6 @@ def rules_predict_safe_unsafe(features, url):
     if score >= 6:
         return "Unsafe", 0.9, risk_score
     elif score >= 3:
-        return "Unsafe", 0.7, risk_score
+        return "Suspicious", 0.7, risk_score
     else:
         return "Safe", 0.85, risk_score

@@ -30,20 +30,54 @@ export type BackendResult = {
   transformer_based?: { status: string; risk_score: number };
   explanation?: Explanation;
   attack?: AttackInfo;
-  verified_qr?: {
-    is_qrguard_code: boolean;
-    is_active: boolean;
-    qr_type: "static" | "dynamic";
-    business_name: string;
-    title: string;
-    description: string;
-    destination_url: string;
-    verification_url: string;
-    qr_value: string;
-    scan_count: number;
-    warning?: string | null;
-    last_verified_at: string;
-  };
+};
+
+export type AdvancedScanEvidence = {
+  original_url?: string;
+  final_url?: string;
+  final_host?: string;
+  page_title?: string;
+  visible_text_sample?: string;
+  redirect_chain?: string[];
+  form_fields?: { type?: string; name?: string; id?: string; placeholder?: string }[];
+  buttons?: string[];
+  links?: { text?: string; href?: string }[];
+  network_domains?: string[];
+  request_count?: number;
+  downloads?: { suggested_filename?: string; url?: string }[];
+  popups?: string[];
+  console_errors?: string[];
+  safe_interactions?: string[];
+  risk_signals?: string[];
+  scanned_at?: string;
+};
+
+export type AdvancedScanResult = {
+  provider?: string;
+  model?: string;
+  configured?: boolean;
+  status?: "Safe" | "Suspicious" | "Unsafe";
+  risk_score?: number;
+  confidence?: number;
+  summary?: string;
+  reasons?: string[];
+  recommended_action?: string;
+};
+
+export type AdvancedScan = {
+  scan_id: string;
+  status: "pending" | "complete" | "failed";
+  qr_text: string;
+  target_url: string;
+  static_result?: BackendResult;
+  evidence?: AdvancedScanEvidence;
+  llm_result?: AdvancedScanResult;
+  error?: string | null;
+  screenshot_url?: string | null;
+  created_at: string;
+  completed_at?: string | null;
+  viewed_at?: string | null;
+  expires_at: string;
 };
 
 export type ParsedQRContent = {
