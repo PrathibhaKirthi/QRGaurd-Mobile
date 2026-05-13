@@ -2,6 +2,7 @@
   "expo": {
     "name": "QRGuard",
     "slug": "QRGuard",
+    "scheme": "qrguard",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/QRGuard_logo.png",
@@ -14,12 +15,14 @@
     },
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "com.qrguard.mobile",
       "infoPlist": {
         "NSCameraUsageDescription": "We need camera access to scan QR codes."
       }
     },
     "android": {
-      "permissions": ["CAMERA"],
+      "package": "com.qrguard.mobile",
+      "permissions": ["CAMERA", "POST_NOTIFICATIONS"],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"

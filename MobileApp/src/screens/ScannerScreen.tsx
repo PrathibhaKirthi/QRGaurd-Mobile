@@ -2,87 +2,49 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
-  TextInput,
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
-  Modal,
   ScrollView,
   Alert,
   StatusBar,
   Image,
   Linking,
   PanResponder,
+  Dimensions,
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import RiskGauge from "../components/RiskGauge";
-import { saveScan } from "../../storage/historyStorage";
-import { scanURL, submitSuspiciousQRReport, type QRReportReason } from "../services/api";
+import AdvancedScanLoadingSteps from "../components/scanner/AdvancedScanLoadingSteps";
+import ReportSuspiciousQRModal from "../components/scanner/ReportSuspiciousQRModal";
+import {
+  ATTACK_SEVERITY_THEME,
+  FEATURE_LABELS,
+  QR_TYPE_LABELS,
+  STATUS_THEME,
+  contribColor,
+  formatReportReason,
+  type StatusKey,
+} from "../constants/scanDisplay";
+import { saveScan, saveAdvancedScan } from "../../storage/historyStorage";
+import {
+  fetchAdvancedScan,
+  markAdvancedScanViewed,
+  scanURL,
+  startAdvancedScan,
+  submitSuspiciousQRReport,
+  type QRReportReason,
+} from "../services/api";
+import {
+  addAdvancedScanNotificationResponseListener,
+  getLastAdvancedScanNotificationScanId,
+  getExpoPushTokenForAdvancedScan,
+} from "../services/notifications";
 import parseQRContent from "../utils/parseQRContent";
-import type { AttackInfo, BackendResult, ParsedQRContent } from "../types/scan";
+import type { AdvancedScan, BackendResult, ParsedQRContent } from "../types/scan";
 
-const FEATURE_LABELS: Record<string, string> = {
-  has_ip: "Raw IP address",
-  has_at_symbol: "@ symbol present",
-  has_https: "HTTPS present",
-  has_http: "Plain HTTP",
-  has_hyphen_in_domain: "Hyphen in domain",
-  num_special_chars: "Special characters",
-  url_length: "URL length",
-  num_dots: "Subdomains (dots)",
-  num_digits: "Digit count",
-  domain_length: "Domain length",
-  num_slashes: "Path depth",
-};
+const CAMERA_PREVIEW_HEIGHT = Math.min(Math.max(Dimensions.get("window").height * 0.62, 430), 560);
 
-const QR_TYPE_LABELS: Record<ParsedQRContent["type"], string> = {
-  url: "URL QR",
-  plain_text: "Text QR",
-  email: "Email QR",
-  phone: "Phone QR",
-  sms: "SMS QR",
-  vcard: "Contact QR",
-  location: "Location QR",
-  calendar: "Calendar QR",
-};
-
-type StatusKey = "Safe" | "Suspicious" | "Unsafe";
-
-const STATUS_THEME: Record<
-  StatusKey,
-  { main: string; soft: string; bg: string; chip: string; chipLabel: string }
-> = {
-  Safe: { main: "#22c55e", soft: "#86efac", bg: "#f0fdf4", chip: "#bbf7d0", chipLabel: "No threats" },
-  Suspicious: {
-    main: "#f97316",
-    soft: "#fed7aa",
-    bg: "#fff7ed",
-    chip: "#fed7aa",
-    chipLabel: "Proceed with care",
-  },
-  Unsafe: { main: "#ef4444", soft: "#fca5a5", bg: "#fef2f2", chip: "#fecaca", chipLabel: "High risk" },
-};
-
-const ATTACK_SEVERITY_THEME: Record<AttackInfo["severity"], { bg: string; border: string; text: string }> = {
-  low: { bg: "#f0fdf4", border: "#bbf7d0", text: "#166534" },
-  medium: { bg: "#fff7ed", border: "#fed7aa", text: "#c2410c" },
-  high: { bg: "#fef2f2", border: "#fecaca", text: "#b91c1c" },
-};
-
-const REPORT_REASONS: { label: string; value: QRReportReason }[] = [
-  { label: "Fake sticker", value: "fake_sticker" },
-  { label: "Payment scam", value: "payment_scam" },
-  { label: "Wrong business", value: "wrong_business" },
-  { label: "Phishing", value: "phishing" },
-  { label: "Other", value: "other" },
-];
-
-const contribColor = (value: number) => {
-  if (value >= 0.8) return "#ef4444";
-  if (value >= 0.4) return "#f97316";
-  if (value >= 0.2) return "#facc15";
-  return "#a78bfa";
-};
 
 const getLocalFeatureContributions = (content: ParsedQRContent) => {
   const prefixFeatureMap: Record<ParsedQRContent["type"], string> = {
@@ -118,13 +80,13 @@ const NON_URL_CONFIDENCE: Record<Exclude<ParsedQRContent["type"], "url">, number
 
 type ScannerScreenProps = {
   onHistorySaved?: () => void;
-  onOpenBusiness?: () => void;
+  onOpenGenerator?: () => void;
   onOpenHistory?: () => void;
 };
 
 export default function ScannerScreen({
   onHistorySaved,
-  onOpenBusiness,
+  onOpenGenerator,
   onOpenHistory,
 }: ScannerScreenProps) {
   const [permission, requestPermission] = useCameraPermissions();
@@ -141,15 +103,89 @@ export default function ScannerScreen({
   const [reportNote, setReportNote] = useState("");
   const [reportSubmitting, setReportSubmitting] = useState(false);
   const [reportedCurrentScan, setReportedCurrentScan] = useState(false);
+  const [advancedScan, setAdvancedScan] = useState<AdvancedScan | null>(null);
+  const [advancedScanLoading, setAdvancedScanLoading] = useState(false);
+  const [advancedScanError, setAdvancedScanError] = useState("");
 
   const pinchStartDistance = useRef<number | null>(null);
   const pinchStartZoom = useRef(0);
+  const advancedScanViewedRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!permission?.granted) {
       requestPermission();
     }
   }, [permission?.granted, requestPermission]);
+
+  useEffect(() => {
+    getLastAdvancedScanNotificationScanId()
+      .then(async (scanId) => {
+        if (!scanId) return;
+        const scan = await fetchAdvancedScan(scanId);
+        setAdvancedScan(scan);
+      })
+      .catch(() => {});
+
+    const subscription = addAdvancedScanNotificationResponseListener(async (scanId) => {
+      try {
+        const scan = await fetchAdvancedScan(scanId);
+        setAdvancedScan(scan);
+        setAdvancedScanError("");
+      } catch (error) {
+        Alert.alert("Advanced Scan", error instanceof Error ? error.message : "Unable to load Advanced Scan.");
+      }
+    });
+
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
+    if (!advancedScan?.scan_id || advancedScan.status !== "pending") {
+      return;
+    }
+
+    const interval = setInterval(async () => {
+      try {
+        const scan = await fetchAdvancedScan(advancedScan.scan_id);
+        setAdvancedScan(scan);
+        if (scan.status === "complete") {
+          Alert.alert("Advanced Scan complete", "Sandbox analysis results are ready below.");
+        }
+        if (scan.status === "failed") {
+          setAdvancedScanError(scan.error ?? "Advanced Scan failed.");
+        }
+      } catch (error) {
+        setAdvancedScanError(error instanceof Error ? error.message : "Unable to load Advanced Scan.");
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [advancedScan?.scan_id, advancedScan?.status]);
+
+  useEffect(() => {
+    if (advancedScan?.status !== "complete" || advancedScanViewedRef.current === advancedScan.scan_id) {
+      return;
+    }
+
+    advancedScanViewedRef.current = advancedScan.scan_id;
+    markAdvancedScanViewed(advancedScan.scan_id).catch(() => {});
+  }, [advancedScan?.scan_id, advancedScan?.status]);
+
+  useEffect(() => {
+    if (advancedScan?.status !== "complete" || !advancedScan?.llm_result) {
+      return;
+    }
+
+    // Save the completed advanced scan to history
+    saveAdvancedScan(advancedScan, result)
+      .then(() => {
+        onHistorySaved?.();
+      })
+      .catch(() => {
+        // Silently fail - we don't want to show an alert for every save
+        console.error("Failed to save advanced scan to history");
+      });
+  }, [advancedScan?.scan_id, advancedScan?.status, advancedScan?.llm_result]);
 
   const clampZoom = (value: number) => Math.min(1, Math.max(0, value));
 
@@ -203,6 +239,10 @@ export default function ScannerScreen({
     setReportNote("");
     setReportSubmitting(false);
     setReportedCurrentScan(false);
+    setAdvancedScan(null);
+    setAdvancedScanLoading(false);
+    setAdvancedScanError("");
+    advancedScanViewedRef.current = null;
   };
 
   const handleBarCodeScanned = async ({ data }: { data: string }) => {
@@ -244,7 +284,7 @@ export default function ScannerScreen({
       try {
         await saveScan({
           id: Date.now(),
-          url: json?.verified_qr?.destination_url ?? json?.qr_text ?? parsed.displayValue,
+          url: json?.qr_text ?? parsed.displayValue,
           risk_score: json?.final?.risk_score ?? 0,
           confidence: json?.final?.confidence ?? 0,
           status: json?.final?.status ?? "Unknown",
@@ -302,7 +342,7 @@ export default function ScannerScreen({
   const nonUrlFeatureContributions = parsedContent ? getLocalFeatureContributions(parsedContent) : [];
   const nonUrlTheme = STATUS_THEME.Safe;
   const nonUrlSummary = parsedContent
-    ? `This QR contains ${QR_TYPE_LABELS[parsedContent.type].toLowerCase()} data. Since it is not a web link, QR Shield skipped backend phishing analysis and displayed the extracted content locally.`
+    ? `This QR contains ${QR_TYPE_LABELS[parsedContent.type].toLowerCase()} data. Since it is not a web link, QRGuard skipped backend phishing analysis and displayed the extracted content locally.`
     : "";
   const nonUrlReasons = parsedContent
     ? [
@@ -312,15 +352,45 @@ export default function ScannerScreen({
       ]
     : [];
   const canReportScan = isUrlResult && (status === "Suspicious" || status === "Unsafe");
+  const canRunAdvancedScan = isUrlResult && !!result;
+  const advancedVerdict = advancedScan?.llm_result?.status as StatusKey | undefined;
+  const advancedTheme = advancedVerdict ? STATUS_THEME[advancedVerdict] : null;
+  const advancedRisk = advancedScan?.llm_result?.risk_score ?? 0;
+  const advancedConfidence = advancedScan?.llm_result?.confidence ?? 0;
+  const advancedSignals = advancedScan?.evidence?.risk_signals ?? [];
+  const advancedDomains = advancedScan?.evidence?.network_domains ?? [];
+  const advancedFields = advancedScan?.evidence?.form_fields ?? [];
+  const scannedUrl = isUrlResult ? result?.qr_text ?? parsedContent?.displayValue : "";
 
-  const openVerifiedDestination = async () => {
-    const destination = result?.verified_qr?.destination_url;
-    if (!destination) return;
+  const handleOpenURL = async () => {
+    if (!scannedUrl) return;
 
-    try {
-      await Linking.openURL(destination);
-    } catch {
-      Alert.alert("Unable to open website", "This destination could not be opened on your device.");
+    if (status === "Unsafe" || status === "Suspicious") {
+      Alert.alert(
+        "Warning",
+        `This URL was marked as ${status.toLowerCase()}. Opening it may be risky. Are you sure?`,
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Open Anyway",
+            style: "destructive",
+            onPress: async () => {
+              try {
+                await Linking.openURL(scannedUrl);
+              } catch {
+                Alert.alert("Error", "Unable to open this URL.");
+              }
+            },
+          },
+        ]
+      );
+    } else {
+      // Safe URL - open directly
+      try {
+        await Linking.openURL(scannedUrl);
+      } catch {
+        Alert.alert("Error", "Unable to open this URL.");
+      }
     }
   };
 
@@ -331,7 +401,7 @@ export default function ScannerScreen({
       setReportSubmitting(true);
       await submitSuspiciousQRReport({
         scanned_content: result.qr_text ?? parsedContent.displayValue,
-        destination_url: result.verified_qr?.destination_url ?? parsedContent.displayValue,
+        destination_url: parsedContent.displayValue,
         reason: reportReason,
         location_label: reportLocation.trim(),
         note: reportNote.trim(),
@@ -351,21 +421,45 @@ export default function ScannerScreen({
     }
   };
 
+  const handleStartAdvancedScan = async () => {
+    if (!result || !parsedContent) return;
+
+    const targetUrl = result.qr_text ?? parsedContent.displayValue;
+    try {
+      setAdvancedScanLoading(true);
+      setAdvancedScanError("");
+      const expoPushToken = await getExpoPushTokenForAdvancedScan().catch(() => null);
+      const scan = await startAdvancedScan({
+        url: targetUrl,
+        qr_text: result.qr_text ?? parsedContent.displayValue,
+        static_result: result,
+        expo_push_token: expoPushToken,
+      });
+      setAdvancedScan(scan);
+      Alert.alert("Advanced Scan started", "QRGuard will notify you when sandbox analysis is complete.");
+    } catch (error) {
+      setAdvancedScanError(error instanceof Error ? error.message : "Unable to start Advanced Scan.");
+    } finally {
+      setAdvancedScanLoading(false);
+    }
+  };
+
   return (
-    <ScrollView contentContainerStyle={s.container} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      contentContainerStyle={s.container}
+      showsVerticalScrollIndicator={false}
+      scrollEnabled={scanned}
+      bounces={false}
+    >
       <StatusBar barStyle="light-content" />
 
       <View style={s.header}>
-        <Image source={require("../../assets/QRGaurd_logo.png")} style={s.logoImage} />
-        <View>
-          <Text style={s.appTitle}>QR Shield</Text>
-          <Text style={s.appSub}>Security Scanner</Text>
-        </View>
+        <Image source={require("../../assets/QRGuard_logo.png")} style={s.logoImage} />
         <TouchableOpacity style={s.historyBtn} onPress={onOpenHistory}>
           <Text style={s.historyBtnText}>History</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={s.accountBtn} onPress={onOpenBusiness}>
-          <Text style={s.accountBtnText}>Business</Text>
+        <TouchableOpacity style={s.generatorHeaderBtn} onPress={onOpenGenerator}>
+          <Text style={s.generatorHeaderBtnText}>Generate</Text>
         </TouchableOpacity>
         <View style={s.liveBadge}>
           <View style={s.liveDot} />
@@ -420,26 +514,6 @@ export default function ScannerScreen({
             <Text style={s.contentType}>{QR_TYPE_LABELS.url}</Text>
           </View>
 
-          {result.verified_qr?.is_qrguard_code ? (
-            <View style={[s.verifiedBox, !result.verified_qr.is_active && s.disabledVerifiedBox]}>
-              <Text style={s.verifiedTitle}>
-                {result.verified_qr.is_active ? "Verified QRGuard Code" : "Disabled QRGuard Code"}
-              </Text>
-              <Text style={s.verifiedText}>{result.verified_qr.business_name}</Text>
-              <Text style={s.verifiedText}>{result.verified_qr.title}</Text>
-              <Text style={s.verifiedText}>
-                Type: {result.verified_qr.qr_type === "dynamic" ? "Dynamic QR" : "Static QR"}
-              </Text>
-              <Text style={s.verifiedText}>Scans: {result.verified_qr.scan_count}</Text>
-              {result.verified_qr.warning ? <Text style={s.warningText}>{result.verified_qr.warning}</Text> : null}
-              {result.verified_qr.is_active ? (
-                <TouchableOpacity style={s.openWebsiteButton} onPress={openVerifiedDestination}>
-                  <Text style={s.openWebsiteText}>Open Website</Text>
-                </TouchableOpacity>
-              ) : null}
-            </View>
-          ) : null}
-
           <View style={s.verdictRow}>
             <View style={[s.verdictDot, { backgroundColor: theme.main }]} />
             <Text style={[s.verdictLabel, { color: theme.soft }]}>{status}</Text>
@@ -468,16 +542,157 @@ export default function ScannerScreen({
             </View>
           ) : null}
 
+          {scannedUrl ? (
+            <TouchableOpacity
+              style={[s.openUrlButton, status === "Unsafe" && s.openUrlButtonDanger, status === "Suspicious" && s.openUrlButtonWarning]}
+              onPress={handleOpenURL}
+            >
+              <Text style={s.openUrlButtonText}>
+                {status === "Safe" ? "Open Scanned URL" : "Open Scanned URL Anyway"}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+
+          {canRunAdvancedScan ? (
+            <View style={s.advancedCard}>
+              <View style={s.advancedHeader}>
+                <View>
+                  <Text style={s.advancedTitle}>Advanced Scan</Text>
+                  <Text style={s.advancedSubtitle}>Sandbox browser analysis</Text>
+                </View>
+                {advancedScan?.status && advancedScan.status !== "pending" ? (
+                  <View style={s.advancedStatusPill}>
+                    <Text style={s.advancedStatusText}>{advancedScan.status.toUpperCase()}</Text>
+                  </View>
+                ) : null}
+              </View>
+
+              {!advancedScan ? (
+                <>
+                  <Text style={s.advancedText}>
+                    Run this URL in a controlled browser sandbox and review the dynamic evidence separately from the static scan.
+                  </Text>
+                  <TouchableOpacity
+                    style={[s.advancedButton, advancedScanLoading && s.advancedButtonDisabled]}
+                    onPress={handleStartAdvancedScan}
+                    disabled={advancedScanLoading}
+                  >
+                    {advancedScanLoading ? (
+                      <ActivityIndicator color="#ffffff" />
+                    ) : (
+                      <Text style={s.advancedButtonText}>Run Advanced Scan</Text>
+                    )}
+                  </TouchableOpacity>
+                </>
+              ) : null}
+
+              {advancedScan?.status === "pending" ? (
+                <AdvancedScanLoadingSteps />
+              ) : null}
+
+              {advancedScan?.status === "failed" ? (
+                <Text style={s.advancedError}>{advancedScan.error ?? advancedScanError}</Text>
+              ) : null}
+
+              {advancedScan?.status === "complete" && advancedScan.llm_result ? (
+                <>
+                  <View style={s.advancedVerdictRow}>
+                    <View style={[s.verdictDot, { backgroundColor: advancedTheme?.main ?? "#4f46e5" }]} />
+                    <Text style={[s.advancedVerdict, { color: advancedTheme?.soft ?? SOFT }]}>
+                      {advancedVerdict ?? "Suspicious"}
+                    </Text>
+                    <Text style={s.advancedScore}>{advancedRisk}% risk</Text>
+                  </View>
+
+                  {advancedScan.screenshot_url ? (
+                    <Image source={{ uri: advancedScan.screenshot_url }} style={s.previewImage} />
+                  ) : null}
+
+                  <View style={s.metricsRow}>
+                    <View style={s.metricBox}>
+                      <Text style={s.metricVal}>{advancedConfidence}%</Text>
+                      <Text style={s.metricLbl}>Dynamic confidence</Text>
+                    </View>
+                    <View style={s.metricDivider} />
+                    <View style={s.metricBox}>
+                      <Text style={[s.metricVal, { color: advancedTheme?.soft ?? SOFT }]}>
+                        {advancedVerdict ?? "Ready"}
+                      </Text>
+                      <Text style={s.metricLbl}>Dynamic verdict</Text>
+                    </View>
+                  </View>
+
+                  {advancedScan.llm_result.summary ? (
+                    <View style={[s.summaryBox, { borderLeftColor: advancedTheme?.main ?? PURPLE }]}>
+                      <Text style={s.summaryText}>{advancedScan.llm_result.summary}</Text>
+                    </View>
+                  ) : null}
+
+                  {advancedScan.llm_result.reasons?.map((reason, index) => (
+                    <View key={`${reason}-${index}`} style={s.reasonRow}>
+                      <View style={[s.reasonDot, { backgroundColor: index === 0 ? advancedTheme?.main ?? PURPLE : "#a78bfa" }]} />
+                      <Text style={s.reasonText}>{reason}</Text>
+                    </View>
+                  ))}
+
+                  <Text style={s.sectionLabel}>Dynamic evidence</Text>
+                  <View style={s.modelCard}>
+                    {[
+                      { name: "Final URL", val: advancedScan.evidence?.final_url ?? advancedScan.target_url },
+                      { name: "Redirects", val: `${advancedScan.evidence?.redirect_chain?.length ?? 0}` },
+                      { name: "Requests", val: `${advancedScan.evidence?.request_count ?? 0}` },
+                      { name: "Form fields", val: `${advancedFields.length}` },
+                      { name: "Downloads", val: `${advancedScan.evidence?.downloads?.length ?? 0}` },
+                    ].map((item, index, items) => (
+                      <View key={item.name} style={[s.modelRow, index === items.length - 1 && { borderBottomWidth: 0 }]}>
+                        <Text style={s.modelName}>{item.name}</Text>
+                        <Text style={s.modelVal}>{item.val}</Text>
+                      </View>
+                    ))}
+                  </View>
+
+                  {advancedSignals.length ? (
+                    <>
+                      <Text style={s.sectionLabel}>Sandbox signals</Text>
+                      {advancedSignals.slice(0, 5).map((signal, index) => (
+                        <View key={`${signal}-${index}`} style={s.reasonRow}>
+                          <View style={[s.reasonDot, { backgroundColor: advancedTheme?.main ?? PURPLE }]} />
+                          <Text style={s.reasonText}>{signal}</Text>
+                        </View>
+                      ))}
+                    </>
+                  ) : null}
+
+                  {advancedDomains.length ? (
+                    <>
+                      <Text style={s.sectionLabel}>Loaded domains</Text>
+                      <View style={s.urlBox}>
+                        <Text style={s.urlText}>{advancedDomains.slice(0, 12).join(", ")}</Text>
+                      </View>
+                    </>
+                  ) : null}
+                </>
+              ) : null}
+
+              {advancedScanError && advancedScan?.status !== "failed" ? (
+                <Text style={s.advancedError}>{advancedScanError}</Text>
+              ) : null}
+            </View>
+          ) : null}
+
           {communityReports?.matched ? (
             <>
               <Text style={s.sectionLabel}>Shared report database</Text>
               <View style={s.communityReportCard}>
-                <Text style={s.communityReportTitle}>Reported suspicious QR</Text>
+                <Text style={s.communityReportTitle}>Stored bad QR match</Text>
+                <Text style={s.communityReportText}>
+                  This QR is stored in the shared suspicious QR database and has been marked bad.
+                </Text>
                 <Text style={s.communityReportText}>
                   {communityReports.report_count} report(s) found for this QR.
                 </Text>
                 <Text style={s.communityReportText}>
-                  Reasons: {communityReports.reasons.join(", ")}
+                  Reasons: {communityReports.reasons.map(formatReportReason).join(", ")}
                 </Text>
               </View>
             </>
@@ -619,15 +834,6 @@ export default function ScannerScreen({
               <View style={s.urlBox}>
                 <Text style={s.urlText}>{result.qr_text}</Text>
               </View>
-
-              {result.verified_qr?.destination_url ? (
-                <>
-                  <Text style={s.sectionLabel}>Verified destination</Text>
-                  <View style={s.urlBox}>
-                    <Text style={s.urlText}>{result.verified_qr.destination_url}</Text>
-                  </View>
-                </>
-              ) : null}
             </>
           ) : null}
         </View>
@@ -732,77 +938,18 @@ export default function ScannerScreen({
         </View>
       )}
 
-      <Modal
-        transparent
-        animationType="fade"
+      <ReportSuspiciousQRModal
         visible={reportVisible}
-        onRequestClose={() => setReportVisible(false)}
-      >
-        <View style={s.modalBackdrop}>
-          <View style={s.reportModal}>
-            <Text style={s.modalTitle}>Report suspicious QR</Text>
-            <Text style={s.modalHelp}>
-              Add what you noticed. Location and notes are optional, but useful for spotting repeated fake stickers.
-            </Text>
-
-            <Text style={s.reportFieldLabel}>Reason</Text>
-            <View style={s.reasonGrid}>
-              {REPORT_REASONS.map((reason) => (
-                <TouchableOpacity
-                  key={reason.value}
-                  style={[s.reasonChip, reportReason === reason.value && s.reasonChipActive]}
-                  onPress={() => setReportReason(reason.value)}
-                >
-                  <Text style={[s.reasonChipText, reportReason === reason.value && s.reasonChipTextActive]}>
-                    {reason.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={s.reportFieldLabel}>Location</Text>
-            <TextInput
-              value={reportLocation}
-              onChangeText={setReportLocation}
-              placeholder="e.g. Parking meter on Grafton Street"
-              placeholderTextColor={MUTED}
-              style={s.reportInput}
-            />
-
-            <Text style={s.reportFieldLabel}>Note</Text>
-            <TextInput
-              value={reportNote}
-              onChangeText={setReportNote}
-              placeholder="What made it look suspicious?"
-              placeholderTextColor={MUTED}
-              multiline
-              maxLength={500}
-              style={[s.reportInput, s.reportTextArea]}
-            />
-
-            <View style={s.modalActions}>
-              <TouchableOpacity
-                style={s.modalCancelButton}
-                onPress={() => setReportVisible(false)}
-                disabled={reportSubmitting}
-              >
-                <Text style={s.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={s.modalSubmitButton}
-                onPress={handleSubmitReport}
-                disabled={reportSubmitting}
-              >
-                {reportSubmitting ? (
-                  <ActivityIndicator color="#ffffff" />
-                ) : (
-                  <Text style={s.modalSubmitText}>Submit Report</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        reason={reportReason}
+        location={reportLocation}
+        note={reportNote}
+        submitting={reportSubmitting}
+        onClose={() => setReportVisible(false)}
+        onReasonChange={setReportReason}
+        onLocationChange={setReportLocation}
+        onNoteChange={setReportNote}
+        onSubmit={handleSubmitReport}
+      />
 
       <View style={{ height: 32 }} />
     </ScrollView>
@@ -823,10 +970,8 @@ const s = StyleSheet.create({
   center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: BG, gap: 14 },
   mutedText: { color: MUTED, fontSize: 14 },
 
-  header: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 22, width: "100%" },
-  logoImage: { width: 50, height: 50, resizeMode: "contain" },
-  appTitle: { fontSize: 17, fontWeight: "600", color: TEXT },
-  appSub: { fontSize: 11, color: MUTED, marginTop: 1 },
+  header: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 22, width: "100%" },
+  logoImage: { width: 128, height: 44, resizeMode: "contain" },
   historyBtn: {
     marginLeft: "auto",
     backgroundColor: CARD,
@@ -837,7 +982,7 @@ const s = StyleSheet.create({
     paddingVertical: 7,
   },
   historyBtnText: { color: PURPLE, fontSize: 12, fontWeight: "600" },
-  accountBtn: {
+  generatorHeaderBtn: {
     backgroundColor: "#eef2ff",
     borderWidth: 0.5,
     borderColor: PURPLE,
@@ -845,26 +990,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
   },
-  accountBtnText: { color: PURPLE, fontSize: 12, fontWeight: "600" },
-  signInPrompt: {
-    width: "100%",
-    backgroundColor: CARD,
-    borderWidth: 0.5,
-    borderColor: BORDER,
-    borderRadius: 14,
-    padding: 12,
-    marginTop: -10,
-    marginBottom: 16,
-  },
-  signInPromptText: { color: MUTED, fontSize: 12.5, textAlign: "center" },
-  signedInText: {
-    width: "100%",
-    color: MUTED,
-    fontSize: 12,
-    marginTop: -10,
-    marginBottom: 16,
-    textAlign: "center",
-  },
+  generatorHeaderBtnText: { color: PURPLE, fontSize: 12, fontWeight: "600" },
   liveBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -881,7 +1007,7 @@ const s = StyleSheet.create({
 
   cameraWrap: {
     width: "100%",
-    height: 240,
+    height: CAMERA_PREVIEW_HEIGHT,
     borderRadius: 20,
     overflow: "hidden",
     borderWidth: 1.5,
@@ -950,6 +1076,19 @@ const s = StyleSheet.create({
 
   summaryBox: { borderLeftWidth: 2.5, paddingLeft: 10, marginBottom: 14 },
   summaryText: { fontSize: 12.5, color: SOFT, lineHeight: 20 },
+  
+  openUrlButton: {
+    backgroundColor: "#22c55e",
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: 14,
+    alignItems: "center",
+  },
+  openUrlButtonWarning: { backgroundColor: "#f97316" },
+  openUrlButtonDanger: { backgroundColor: "#ef4444" },
+  openUrlButtonText: { color: "#ffffff", fontSize: 14, fontWeight: "700" },
+  
   reportPrompt: {
     backgroundColor: "#fff7ed",
     borderWidth: 0.5,
@@ -969,31 +1108,54 @@ const s = StyleSheet.create({
   },
   reportButtonDone: { backgroundColor: "#22c55e" },
   reportButtonText: { color: "#ffffff", fontSize: 12.5, fontWeight: "700" },
-  verifiedBox: {
-    backgroundColor: "#f0fdf4",
-    borderWidth: 0.5,
-    borderColor: "#86efac",
+  advancedCard: {
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: "#c7d2fe",
     borderRadius: 12,
     padding: 12,
     marginBottom: 14,
   },
-  disabledVerifiedBox: {
-    backgroundColor: "#fef2f2",
-    borderColor: "#fca5a5",
+  advancedHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 },
+  advancedTitle: { color: TEXT, fontSize: 15, fontWeight: "700" },
+  advancedSubtitle: { color: MUTED, fontSize: 11.5, marginTop: 2 },
+  advancedStatusPill: {
+    backgroundColor: "#eef2ff",
+    borderRadius: 999,
+    borderWidth: 0.5,
+    borderColor: "#c7d2fe",
+    paddingHorizontal: 9,
+    paddingVertical: 5,
   },
-  verifiedTitle: { color: "#166534", fontSize: 14, fontWeight: "700", marginBottom: 4 },
-  verifiedText: { color: TEXT, fontSize: 12.5, lineHeight: 18 },
-  warningText: { color: "#b91c1c", fontSize: 12.5, lineHeight: 18, marginTop: 6 },
-  openWebsiteButton: {
+  advancedStatusText: { color: PURPLE, fontSize: 10, fontWeight: "800", letterSpacing: 0.6 },
+  advancedText: { color: MUTED, fontSize: 12.5, lineHeight: 18, flex: 1 },
+  advancedButton: {
     backgroundColor: PURPLE,
     borderRadius: 10,
     alignSelf: "flex-start",
+    minHeight: 40,
+    minWidth: 148,
+    alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: 14,
     paddingVertical: 9,
     marginTop: 10,
   },
-  openWebsiteText: { color: "#ffffff", fontSize: 12.5, fontWeight: "700" },
-
+  advancedButtonDisabled: { opacity: 0.75 },
+  advancedButtonText: { color: "#ffffff", fontSize: 12.5, fontWeight: "700" },
+  advancedError: { color: "#b91c1c", fontSize: 12.5, lineHeight: 18, marginTop: 8 },
+  advancedVerdictRow: { flexDirection: "row", alignItems: "center", gap: 9, marginBottom: 10 },
+  advancedVerdict: { fontSize: 20, fontWeight: "700" },
+  advancedScore: { marginLeft: "auto", color: MUTED, fontSize: 12, fontWeight: "700" },
+  previewImage: {
+    width: "100%",
+    height: 170,
+    borderRadius: 10,
+    borderWidth: 0.5,
+    borderColor: BORDER,
+    backgroundColor: SURF,
+    marginBottom: 12,
+  },
   attackCard: { borderRadius: 12, borderWidth: 0.5, padding: 12, marginBottom: 4 },
   attackHeader: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8 },
   attackType: { flex: 1, fontSize: 15, fontWeight: "600", color: TEXT },
@@ -1067,74 +1229,6 @@ const s = StyleSheet.create({
 
   urlBox: { backgroundColor: SURF, borderRadius: 8, borderWidth: 0.5, borderColor: BORDER, padding: 10, marginTop: 2 },
   urlText: { fontSize: 10.5, color: MUTED, lineHeight: 16 },
-
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.56)",
-    justifyContent: "center",
-    padding: 18,
-  },
-  reportModal: {
-    backgroundColor: CARD,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: BORDER,
-    padding: 18,
-  },
-  modalTitle: { color: TEXT, fontSize: 19, fontWeight: "700", marginBottom: 6 },
-  modalHelp: { color: MUTED, fontSize: 12.5, lineHeight: 18, marginBottom: 14 },
-  reportFieldLabel: {
-    color: MUTED,
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 0.7,
-    textTransform: "uppercase",
-    marginBottom: 7,
-  },
-  reasonGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 14 },
-  reasonChip: {
-    backgroundColor: SURF,
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 999,
-    paddingHorizontal: 11,
-    paddingVertical: 8,
-  },
-  reasonChipActive: { backgroundColor: PURPLE, borderColor: PURPLE },
-  reasonChipText: { color: MUTED, fontSize: 12, fontWeight: "700" },
-  reasonChipTextActive: { color: "#ffffff" },
-  reportInput: {
-    backgroundColor: SURF,
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 10,
-    color: TEXT,
-    fontSize: 13,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 12,
-  },
-  reportTextArea: { minHeight: 84, textAlignVertical: "top" },
-  modalActions: { flexDirection: "row", gap: 10, marginTop: 2 },
-  modalCancelButton: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: BORDER,
-    borderRadius: 11,
-    minHeight: 46,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  modalCancelText: { color: TEXT, fontSize: 13, fontWeight: "700" },
-  modalSubmitButton: {
-    flex: 1,
-    backgroundColor: PURPLE,
-    borderRadius: 11,
-    minHeight: 46,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  modalSubmitText: { color: "#ffffff", fontSize: 13, fontWeight: "700" },
 
   primaryBtn: {
     backgroundColor: PURPLE,

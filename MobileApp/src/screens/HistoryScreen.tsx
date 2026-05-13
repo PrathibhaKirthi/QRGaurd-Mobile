@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import {
   Alert,
   FlatList,
+  Linking,
   ScrollView,
   StyleSheet,
   Text,
@@ -9,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { clearHistory, getHistory } from "../../storage/historyStorage";
+import { getToken } from "../services/api";
 import type { BackendResult } from "../types/scan";
 
 const BG = "#ecf0f5";
@@ -26,6 +28,7 @@ type LocalHistoryItem = {
   confidence: number;
   status: string;
   verdict?: string;
+  scan_type?: string;
   explanation_summary?: string;
   timestamp: string;
   result?: BackendResult;
@@ -62,10 +65,12 @@ export default function HistoryScreen({ onBack, refreshKey = 0 }: Props) {
   const [history, setHistory] = useState<DisplayHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedItem, setSelectedItem] = useState<DisplayHistoryItem | null>(null);
+  const [cloudBacked, setCloudBacked] = useState(false);
 
   const loadHistory = async () => {
     try {
       setLoading(true);
+      setCloudBacked(Boolean(await getToken()));
       const storedHistory = await getHistory();
       setHistory(storedHistory);
     } catch (error) {
@@ -83,7 +88,9 @@ export default function HistoryScreen({ onBack, refreshKey = 0 }: Props) {
   const handleClearHistory = () => {
     Alert.alert(
       "Clear History",
-      "This will remove all saved scan results from local storage.",
+      cloudBacked
+        ? "This will remove saved scan results from your cloud account and this device."
+        : "This will remove all saved scan results from local storage.",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -102,6 +109,37 @@ export default function HistoryScreen({ onBack, refreshKey = 0 }: Props) {
         },
       ]
     );
+  };
+
+  const handleOpenURL = (item: DisplayHistoryItem) => {
+    const url = getContent(item);
+    const verdict = getVerdict(item);
+
+    if (verdict === "Unsafe" || verdict === "Suspicious") {
+      Alert.alert(
+        "⚠️ Warning",
+        `This URL was marked as ${verdict.toLowerCase()}. Opening it may be risky. Are you sure?`,
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Open Anyway",
+            style: "destructive",
+            onPress: async () => {
+              try {
+                await Linking.openURL(url);
+              } catch {
+                Alert.alert("Error", "Unable to open this URL.");
+              }
+            },
+          },
+        ]
+      );
+    } else {
+      // Safe URL - open directly
+      Linking.openURL(url).catch(() => {
+        Alert.alert("Error", "Unable to open this URL.");
+      });
+    }
   };
 
   const renderItem = ({ item }: { item: DisplayHistoryItem }) => (
@@ -166,6 +204,21 @@ export default function HistoryScreen({ onBack, refreshKey = 0 }: Props) {
 
           <Text style={styles.label}>Scanned</Text>
           <Text style={styles.detailText}>{formatTime(selectedItem.timestamp)}</Text>
+
+          {selectedItem.scan_type !== "dynamic" && selectedItem.scan_type !== "plain_text" && selectedItem.scan_type !== "email" && selectedItem.scan_type !== "phone" && selectedItem.scan_type !== "sms" && selectedItem.scan_type !== "vcard" && selectedItem.scan_type !== "location" && selectedItem.scan_type !== "calendar" ? (
+            <TouchableOpacity
+              style={[
+                styles.openUrlButton,
+                selectedItem.verdict === "Unsafe" && styles.openUrlButtonDanger,
+                selectedItem.verdict === "Suspicious" && styles.openUrlButtonWarning,
+              ]}
+              onPress={() => handleOpenURL(selectedItem)}
+            >
+              <Text style={styles.openUrlButtonText}>
+                {selectedItem.verdict === "Safe" ? "🔗 Open URL" : "⚠️ Open URL"}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       </ScrollView>
     );
@@ -184,7 +237,9 @@ export default function HistoryScreen({ onBack, refreshKey = 0 }: Props) {
       </View>
 
       <Text style={styles.scopeText}>
-        Showing local scan history on this device.
+        {cloudBacked
+          ? "Showing cloud scan history for your signed-in account."
+          : "Showing local scan history on this device. Sign in to sync scans across devices."}
       </Text>
 
       {loading ? (
@@ -360,4 +415,15 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginBottom: 6,
   },
+  openUrlButton: {
+    backgroundColor: "#22c55e",
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginTop: 16,
+    alignItems: "center",
+  },
+  openUrlButtonWarning: { backgroundColor: "#f97316" },
+  openUrlButtonDanger: { backgroundColor: "#ef4444" },
+  openUrlButtonText: { color: "#ffffff", fontSize: 14, fontWeight: "700" },
 });
