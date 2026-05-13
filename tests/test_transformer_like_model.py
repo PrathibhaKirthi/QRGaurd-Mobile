@@ -16,7 +16,7 @@ def test_transformer_like_model_handles_predictable_input(monkeypatch):
 
     monkeypatch.setattr(transformer_like_model, "predict", lambda text: ("Safe", 0.9, 0.1))
 
-    classification, confidence, risk_score = transformer_like_model.predict("https://example.com")
+    classification, confidence, risk_score = transformer_like_model.predict("https://www.google.com")
 
     assert classification == "Safe"
     assert confidence == 0.9

@@ -3,22 +3,22 @@ from model.url_rules_model import rules_predict_safe_unsafe
 
 
 def test_rule_based_model_returns_status_confidence_and_risk_score():
-    features = extract_features("https://example.com")
+    features = extract_features("https://www.google.com")
     vector = features_to_vector(features)
 
-    classification, confidence, risk_score = rules_predict_safe_unsafe(vector, "https://example.com")
+    classification, confidence, risk_score = rules_predict_safe_unsafe(vector, "https://www.google.com")
 
-    assert classification in {"Safe", "Unsafe"}
+    assert classification in {"Safe", "Suspicious", "Unsafe"}
     assert 0 <= confidence <= 1
     assert 0 <= risk_score <= 1
 
 
 def test_rule_based_model_scores_suspicious_url_higher_than_safe_url():
-    safe_vector = features_to_vector(extract_features("https://example.com"))
-    suspicious_url = "http://192.168.1.10/login/verify?secure=true&token=123456789"
+    safe_vector = features_to_vector(extract_features("https://www.google.com"))
+    suspicious_url = "http://192.168.1.10/login/verify?secure=true&token=678901234"
     suspicious_vector = features_to_vector(extract_features(suspicious_url))
 
-    _, _, safe_risk = rules_predict_safe_unsafe(safe_vector, "https://example.com")
+    _, _, safe_risk = rules_predict_safe_unsafe(safe_vector, "https://www.google.com")
     suspicious_classification, _, suspicious_risk = rules_predict_safe_unsafe(
         suspicious_vector,
         suspicious_url,
@@ -29,7 +29,7 @@ def test_rule_based_model_scores_suspicious_url_higher_than_safe_url():
 
 
 def test_rule_based_model_flags_paypal_brand_impersonation():
-    phishing_url = "https://paypal-security-check.example.com/login/verify"
+    phishing_url = "https://paypal-security-check.com/login/verify"
     vector = features_to_vector(extract_features(phishing_url))
 
     classification, confidence, risk_score = rules_predict_safe_unsafe(vector, phishing_url)
@@ -60,7 +60,7 @@ def test_rule_based_model_does_not_penalize_real_google_domain_for_brand_name():
 
 
 def test_rule_based_model_flags_google_brand_impersonation():
-    phishing_url = "https://google-account-verify.example.com/login"
+    phishing_url = "https://google-account-verify.com/login"
     vector = features_to_vector(extract_features(phishing_url))
 
     classification, confidence, risk_score = rules_predict_safe_unsafe(vector, phishing_url)

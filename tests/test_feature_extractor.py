@@ -4,14 +4,14 @@ from model.feature_extractor import extract_features, features_to_vector
 
 
 def test_detects_https_url():
-    features = extract_features("https://example.com")
+    features = extract_features("https://www.google.com")
 
     assert features["has_https"] == 1
     assert features["has_http"] == 0
 
 
 def test_detects_http_url_without_https():
-    features = extract_features("http://example.com")
+    features = extract_features("http://www.google.com")
 
     assert features["has_http"] == 1
     assert features["has_https"] == 0
@@ -25,13 +25,13 @@ def test_detects_ip_address_url():
 
 
 def test_detects_at_symbol_in_url():
-    features = extract_features("https://example.com@evil.test/login")
+    features = extract_features("https://www.paypal.com@secure-login.com/login")
 
     assert features["has_at_symbol"] == 1
 
 
 def test_detects_long_url():
-    url = "https://example.com/" + ("a" * 120)
+    url = "https://www.google.com/" + ("a" * 120)
     features = extract_features(url)
 
     assert features["url_length"] == len(url)
@@ -39,7 +39,7 @@ def test_detects_long_url():
 
 
 def test_counts_dots_digits_slashes_and_special_characters():
-    url = "https://a.b.example.com/path/123?q=abc&token=99%25"
+    url = "https://mail.accounts.google.com/path/678?q=abc&token=42%86"
     features = extract_features(url)
 
     assert features["num_dots"] == 3
@@ -49,7 +49,7 @@ def test_counts_dots_digits_slashes_and_special_characters():
 
 
 def test_detects_hyphen_in_domain():
-    features = extract_features("https://secure-login.example.com")
+    features = extract_features("https://secure-login.paypal.com")
 
     assert features["has_hyphen_in_domain"] == 1
 
@@ -59,10 +59,10 @@ def test_detects_hyphen_in_domain():
     [
         "",
         "not a url",
-        "http://example.com",
+        "http://www.google.com",
         "https://192.168.0.1/verify",
-        "http://secure-login.example.com/verify/account",
-        "https://example.com/" + ("x" * 200),
+        "http://secure-login.paypal.com/verify/account",
+        "https://www.google.com/" + ("x" * 200),
     ],
 )
 def test_extract_features_handles_edge_cases(url):

@@ -14,7 +14,7 @@ def test_xai_explainer_returns_human_readable_explanations():
 
 
 def test_xai_explainer_returns_feature_contributions():
-    features = extract_features("https://secure-login.example.com/account")
+    features = extract_features("https://secure-login.paypal.com/account")
 
     explanation = explain(features, fused_risk=0.45, status="Suspicious")
 
@@ -27,7 +27,7 @@ def test_xai_explainer_returns_feature_contributions():
 
 
 def test_xai_explainer_handles_safe_url():
-    features = extract_features("https://example.com")
+    features = extract_features("https://www.google.com")
 
     explanation = explain(features, fused_risk=0.1, status="Safe")
 
