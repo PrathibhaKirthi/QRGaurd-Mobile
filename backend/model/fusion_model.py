@@ -1,8 +1,10 @@
 def _clamp_probability(value: float) -> float:
+    # SAFETY CLAMP: Keep all risk scores inside the 0.0 to 1.0 range.
     return min(max(float(value), 0.0), 1.0)
 
 
 def fuse_two_scores_to_label(p_a: float, p_b: float, w_a: float, w_b: float, mode_name: str = ""):
+    # FUSION ENTRY POINT: Weighted average of two risk sources.
     total_weight = float(w_a) + float(w_b)
     if total_weight <= 0:
         raise ValueError("Fusion weights must add up to a positive value.")
@@ -11,6 +13,7 @@ def fuse_two_scores_to_label(p_a: float, p_b: float, w_a: float, w_b: float, mod
     normalized_b = float(w_b) / total_weight
     p_final = (normalized_a * _clamp_probability(p_a)) + (normalized_b * _clamp_probability(p_b))
 
+    # FINAL VERDICT THRESHOLDS: Safe < 0.4, Suspicious < 0.7, Unsafe >= 0.7.
     if p_final >= 0.7:
         status = "Unsafe"
     elif p_final >= 0.4:

@@ -3,6 +3,7 @@ import { clearCloudHistory, fetchCloudHistory, getToken, saveCloudHistoryItem } 
 
 const HISTORY_KEY = "scan_history";
 
+// HISTORY LOAD: Prefer cloud history when signed in, otherwise use local device storage.
 export async function getHistory() {
   try {
     const token = await getToken();
@@ -31,6 +32,7 @@ export async function getHistory() {
   }
 }
 
+// STATIC SCAN HISTORY: Save normal QR scan results locally, then try cloud sync if signed in.
 export async function saveScan(result) {
   try {
     const existingHistory = await getHistory();
@@ -63,6 +65,7 @@ export async function saveScan(result) {
   }
 }
 
+// ADVANCED SCAN HISTORY: Store dynamic sandbox evidence and verdict after Advanced Scan completes.
 export async function saveAdvancedScan(advancedScan, staticResult) {
   try {
     const existingHistory = await getHistory();
@@ -114,6 +117,7 @@ export async function saveAdvancedScan(advancedScan, staticResult) {
   }
 }
 
+// HISTORY LOOKUP: Used to retrieve a saved Advanced Scan result by scan id.
 export async function getAdvancedScanById(scanId) {
   try {
     const history = await getHistory();
@@ -124,6 +128,7 @@ export async function getAdvancedScanById(scanId) {
   }
 }
 
+// HISTORY CLEAR: Clear cloud history when available, then clear local AsyncStorage.
 export async function clearHistory() {
   try {
     const token = await getToken();

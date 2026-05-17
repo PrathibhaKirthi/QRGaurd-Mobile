@@ -25,6 +25,7 @@ AUTO_UNSAFE_REASON = "auto_unsafe"
 
 
 def classify_score(score: float) -> str:
+    # FINAL LABEL THRESHOLDS: Convert normalized risk into Safe/Suspicious/Unsafe.
     if score < 0.4:
         return "Safe"
     if score < 0.7:
@@ -33,6 +34,7 @@ def classify_score(score: float) -> str:
 
 
 def check_google_web_risk(url):
+    # EXTERNAL THREAT INTELLIGENCE: Optional Google Web Risk lookup.
     if not GOOGLE_WEB_RISK_API_KEY:
         return {
             "provider": "Google Web Risk",
@@ -95,15 +97,18 @@ def _google_web_risk_checker():
 
 
 def build_scan_result(qr_text):
+    # STATIC SCAN PIPELINE: Convert QR URL text into the final safety result.
     features = extract_features(qr_text)
     vec = features_to_vector(features)
 
+    # RULES MODEL: Score visible URL patterns such as HTTPS, IPs, dots, and brand abuse.
     rules_status, rules_conf, rules_risk = rules_predict_safe_unsafe(vec, qr_text)
 
     final_score = rules_risk / 100 if rules_risk > 1 else rules_risk
     final_conf = rules_conf
     google_web_risk = _google_web_risk_checker()(qr_text)
 
+    # ATTACK CLASSIFIER: Add a named threat type such as credential harvesting.
     attack = classify_attack_type(features, qr_text)
     attack_risk = 0
     if attack["type"] != "Legitimate":
@@ -114,6 +119,7 @@ def build_scan_result(qr_text):
         else:
             attack_risk = 0.25
 
+    # FUSION METHOD: Combine rules risk and attack-pattern risk into one final verdict.
     final_status, final_conf, final_score = fuse_two_scores_to_label(
         final_score,
         attack_risk,
@@ -122,11 +128,13 @@ def build_scan_result(qr_text):
         "rules_attack_fusion",
     )
 
+    # SAFE/UNSAFE OVERRIDE: Known threat intelligence raises the result to high risk.
     if google_web_risk["matched"]:
         final_score = max(final_score, 0.95)
         final_conf = max(final_conf, 0.95)
         final_status = classify_score(final_score)
 
+    # EXPLAINABILITY: Produce the summary and reasons shown in the mobile app.
     xai = explain(features, final_score, final_status, top_n=4)
     if attack["severity"] in {"high", "medium"} and attack["type"] != "Legitimate":
         xai["reasons"].insert(0, f"Detected {attack['type'].lower()} pattern.")
@@ -171,6 +179,7 @@ def build_scan_result(qr_text):
 
 
 def get_report_intelligence(*qr_values):
+    # COMMUNITY INTELLIGENCE: Look up matching user reports or auto-stored unsafe QR codes.
     values = [value.strip() for value in qr_values if value and value.strip()]
     unique_values = list(dict.fromkeys(values))
     if not unique_values:
@@ -221,6 +230,7 @@ def get_report_intelligence(*qr_values):
 
 
 def apply_report_intelligence(scan_result, report_intelligence):
+    # COMMUNITY OVERRIDE: Reported QR codes can be raised to Suspicious or Unsafe.
     scan_result["community_reports"] = report_intelligence
     if not report_intelligence["matched"]:
         return scan_result
@@ -258,6 +268,7 @@ def apply_report_intelligence(scan_result, report_intelligence):
 
 
 def record_bad_qr_match(qr_text, scan_result=None, destination_url=None):
+    # AUTO BAD-QR STORAGE: Store URLs that QRGuard classified as Unsafe.
     content = (qr_text or "").strip()
     if not content:
         return None

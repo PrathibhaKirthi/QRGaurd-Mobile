@@ -43,6 +43,7 @@ function isBlockedIp(address) {
 }
 
 async function isBlockedHost(hostname) {
+  // SANDBOX SAFETY: Block localhost/private/reserved targets before browsing.
   const normalized = hostname.toLowerCase().replace(/\.$/, "");
   if (normalized === "localhost") {
     return true;
@@ -67,6 +68,7 @@ function uniqueValues(values) {
 }
 
 function classifyField(input) {
+  // FORM FIELD SIGNALS: Identify password, OTP, payment, and email fields.
   const name = (input.name || input.id || input.placeholder || "").toLowerCase();
   const type = (input.type || "text").toLowerCase();
 
@@ -78,6 +80,7 @@ function classifyField(input) {
 }
 
 async function clickSafeCommonElements(page) {
+  // SAFE INTERACTION: Only click common consent/continue buttons to reveal content.
   const labels = [
     "Accept",
     "Accept all",
@@ -106,6 +109,7 @@ async function clickSafeCommonElements(page) {
 }
 
 function buildRiskSignals(evidence) {
+  // DYNAMIC RISK SIGNALS: Convert browser evidence into readable suspicious behaviours.
   const signals = [];
   const finalHost = parseHttpUrl(evidence.final_url || "")?.hostname;
   const originalHost = parseHttpUrl(evidence.original_url || "")?.hostname;
@@ -143,6 +147,7 @@ app.get("/health", (_req, res) => {
 });
 
 app.post("/scan-url", async (req, res) => {
+  // PLAYWRIGHT SCAN ENTRY POINT: Load the URL and collect dynamic evidence.
   const parsed = parseHttpUrl(req.body?.url || "");
   if (!parsed) {
     return res.status(400).json({ error: "A valid HTTP or HTTPS URL is required." });
@@ -162,6 +167,7 @@ app.post("/scan-url", async (req, res) => {
   const redirectChain = [];
 
   try {
+    // ISOLATED BROWSER: Open the destination in headless Chromium.
     browser = await chromium.launch({
       headless: true,
       args: ["--disable-dev-shm-usage", "--no-sandbox"],
@@ -203,6 +209,7 @@ app.post("/scan-url", async (req, res) => {
       await download.cancel().catch(() => {});
     });
 
+    // REQUEST GUARD: Block private/local requests during page navigation too.
     await page.route("**/*", async (route) => {
       const requestUrl = parseHttpUrl(route.request().url());
       if (requestUrl && (await isBlockedHost(requestUrl.hostname))) {
@@ -286,6 +293,7 @@ app.post("/scan-url", async (req, res) => {
       })
     ).slice(0, 80);
 
+    // EVIDENCE PAYLOAD: Sent back to Flask for Gemini/fallback analysis.
     const evidence = {
       original_url: parsed.toString(),
       final_url: finalUrl,

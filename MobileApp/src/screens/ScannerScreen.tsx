@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
-  StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
   ScrollView,
@@ -11,7 +10,6 @@ import {
   Image,
   Linking,
   PanResponder,
-  Dimensions,
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import RiskGauge from "../components/RiskGauge";
@@ -41,11 +39,10 @@ import {
   getExpoPushTokenForAdvancedScan,
 } from "../services/notifications";
 import parseQRContent from "../utils/parseQRContent";
+import { PURPLE, SOFT, s } from "./ScannerScreen.styles";
 import type { AdvancedScan, BackendResult, ParsedQRContent } from "../types/scan";
 
-const CAMERA_PREVIEW_HEIGHT = Math.min(Math.max(Dimensions.get("window").height * 0.62, 430), 560);
-
-
+// LOCAL SAFE PATH: Used when a QR code is not a URL, so no phishing scan is required.
 const getLocalFeatureContributions = (content: ParsedQRContent) => {
   const prefixFeatureMap: Record<ParsedQRContent["type"], string> = {
     url: "HTTP/HTTPS prefix detected",
@@ -89,6 +86,7 @@ export default function ScannerScreen({
   onOpenGenerator,
   onOpenHistory,
 }: ScannerScreenProps) {
+  // SCREEN STATE: Main scanner, result, report, and Advanced Scan state live here.
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [result, setResult] = useState<BackendResult | null>(null);
@@ -111,12 +109,14 @@ export default function ScannerScreen({
   const pinchStartZoom = useRef(0);
   const advancedScanViewedRef = useRef<string | null>(null);
 
+  // CAMERA PERMISSION ENTRY POINT: Request permission before showing the scanner.
   useEffect(() => {
     if (!permission?.granted) {
       requestPermission();
     }
   }, [permission?.granted, requestPermission]);
 
+  // ADVANCED SCAN NOTIFICATIONS: Open completed sandbox scans from push notifications.
   useEffect(() => {
     getLastAdvancedScanNotificationScanId()
       .then(async (scanId) => {
@@ -139,6 +139,7 @@ export default function ScannerScreen({
     return () => subscription.remove();
   }, []);
 
+  // ADVANCED SCAN POLLING: While pending, ask the backend every 5 seconds for the result.
   useEffect(() => {
     if (!advancedScan?.scan_id || advancedScan.status !== "pending") {
       return;
@@ -162,6 +163,7 @@ export default function ScannerScreen({
     return () => clearInterval(interval);
   }, [advancedScan?.scan_id, advancedScan?.status]);
 
+  // ADVANCED SCAN VIEWED STATE: Mark a completed scan as viewed once the user sees it.
   useEffect(() => {
     if (advancedScan?.status !== "complete" || advancedScanViewedRef.current === advancedScan.scan_id) {
       return;
@@ -171,6 +173,7 @@ export default function ScannerScreen({
     markAdvancedScanViewed(advancedScan.scan_id).catch(() => {});
   }, [advancedScan?.scan_id, advancedScan?.status]);
 
+  // HISTORY SAVE: Store completed Advanced Scan results so they appear in scan history.
   useEffect(() => {
     if (advancedScan?.status !== "complete" || !advancedScan?.llm_result) {
       return;
@@ -245,6 +248,7 @@ export default function ScannerScreen({
     advancedScanViewedRef.current = null;
   };
 
+  // SCAN ENTRY POINT: Camera sends QR data here after detecting a QR code.
   const handleBarCodeScanned = async ({ data }: { data: string }) => {
     if (loading || scanned) return;
 
@@ -256,6 +260,7 @@ export default function ScannerScreen({
     const parsed = parseQRContent(data) as ParsedQRContent;
     setParsedContent(parsed);
 
+    // SAFE LOCAL RESULT: Non-URL QR codes are displayed locally and saved as safe content.
     if (parsed.type !== "url") {
       try {
         await saveScan({
@@ -276,6 +281,7 @@ export default function ScannerScreen({
       return;
     }
 
+    // URL RISK ANALYSIS: URL QR codes go to the Flask backend for Safe/Suspicious/Unsafe scoring.
     try {
       const json = await scanURL(parsed.displayValue, parsed.type);
 
@@ -362,6 +368,7 @@ export default function ScannerScreen({
   const advancedFields = advancedScan?.evidence?.form_fields ?? [];
   const scannedUrl = isUrlResult ? result?.qr_text ?? parsedContent?.displayValue : "";
 
+  // OPEN LINK GUARD: Suspicious or Unsafe links require explicit confirmation before opening.
   const handleOpenURL = async () => {
     if (!scannedUrl) return;
 
@@ -394,6 +401,7 @@ export default function ScannerScreen({
     }
   };
 
+  // COMMUNITY REPORTING: Users can report suspicious physical QR codes for future intelligence.
   const handleSubmitReport = async () => {
     if (!result || !parsedContent) return;
 
@@ -421,6 +429,7 @@ export default function ScannerScreen({
     }
   };
 
+  // ADVANCED SCAN START: Runs dynamic sandbox analysis for the scanned URL.
   const handleStartAdvancedScan = async () => {
     if (!result || !parsedContent) return;
 
@@ -470,7 +479,7 @@ export default function ScannerScreen({
       {!scanned && (
         <View style={s.cameraWrap}>
           <CameraView
-            style={StyleSheet.absoluteFillObject}
+            style={s.cameraFill}
             barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
             enableTorch={flashEnabled}
             zoom={zoom}
@@ -955,289 +964,3 @@ export default function ScannerScreen({
     </ScrollView>
   );
 }
-
-const BG = "#ecf0f5";
-const CARD = "#ffffff";
-const SURF = "#f0f4f9";
-const BORDER = "#cbd5e1";
-const PURPLE = "#4f46e5";
-const TEXT = "#1f2937";
-const MUTED = "#6b7280";
-const SOFT = "#4f46e5";
-
-const s = StyleSheet.create({
-  container: { alignItems: "center", backgroundColor: BG, paddingTop: 56, paddingHorizontal: 18 },
-  center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: BG, gap: 14 },
-  mutedText: { color: MUTED, fontSize: 14 },
-
-  header: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 22, width: "100%" },
-  logoImage: { width: 128, height: 44, resizeMode: "contain" },
-  historyBtn: {
-    marginLeft: "auto",
-    backgroundColor: CARD,
-    borderWidth: 0.5,
-    borderColor: BORDER,
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
-  historyBtnText: { color: PURPLE, fontSize: 12, fontWeight: "600" },
-  generatorHeaderBtn: {
-    backgroundColor: "#eef2ff",
-    borderWidth: 0.5,
-    borderColor: PURPLE,
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
-  generatorHeaderBtnText: { color: PURPLE, fontSize: 12, fontWeight: "600" },
-  liveBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: SURF,
-    borderWidth: 0.5,
-    borderColor: PURPLE,
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#4ade80" },
-  liveText: { fontSize: 11, color: SOFT },
-
-  cameraWrap: {
-    width: "100%",
-    height: CAMERA_PREVIEW_HEIGHT,
-    borderRadius: 20,
-    overflow: "hidden",
-    borderWidth: 1.5,
-    borderColor: PURPLE,
-    marginBottom: 18,
-    backgroundColor: "#f8fafc",
-    alignItems: "center",
-    justifyContent: "flex-end",
-  },
-  gestureLayer: { ...StyleSheet.absoluteFillObject, zIndex: 1 },
-  flashBtn: {
-    position: "absolute",
-    top: 34,
-    right: 14,
-    zIndex: 3,
-    width: 28,
-    height: 28,
-    borderRadius: 999,
-    backgroundColor: "rgba(15, 23, 42, 0.6)",
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.26)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  flashBtnActive: { backgroundColor: "#facc15", borderColor: "#fde68a" },
-  flashBtnText: { color: "#f8fafc", fontSize: 13, fontWeight: "700", lineHeight: 14 },
-  flashBtnTextActive: { color: "#713f12" },
-  corner: { position: "absolute", width: 22, height: 22, borderColor: PURPLE, borderStyle: "solid" },
-  cornerTL: { top: 14, left: 14, borderTopWidth: 2, borderLeftWidth: 2, borderTopLeftRadius: 4 },
-  cornerTR: { top: 14, right: 14, borderTopWidth: 2, borderRightWidth: 2, borderTopRightRadius: 4 },
-  cornerBL: { bottom: 14, left: 14, borderBottomWidth: 2, borderLeftWidth: 2, borderBottomLeftRadius: 4 },
-  cornerBR: { bottom: 14, right: 14, borderBottomWidth: 2, borderRightWidth: 2, borderBottomRightRadius: 4 },
-  scanLine: { position: "absolute", left: 14, right: 14, height: 1.5, backgroundColor: "#4f46e5", top: "45%" },
-  camHint: { fontSize: 12, color: MUTED, marginBottom: 14 },
-
-  loadingRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 },
-  loadingText: { fontSize: 13, color: SOFT },
-
-  card: { width: "100%", backgroundColor: CARD, borderRadius: 18, borderWidth: 0.5, borderColor: BORDER, padding: 18, marginBottom: 14 },
-  contentHeader: { marginBottom: 10 },
-  contentType: { fontSize: 18, fontWeight: "600", color: TEXT },
-  contentRow: { paddingVertical: 10, borderBottomWidth: 0.5, borderBottomColor: BORDER, gap: 4 },
-  contentLabel: { fontSize: 11, fontWeight: "600", letterSpacing: 0.8, textTransform: "uppercase", color: MUTED },
-  contentValue: { fontSize: 13, color: TEXT, lineHeight: 20 },
-  contentBox: { backgroundColor: SURF, borderRadius: 10, borderWidth: 0.5, borderColor: BORDER, padding: 12 },
-  verdictRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14 },
-  verdictDot: { width: 10, height: 10, borderRadius: 5 },
-  verdictLabel: { fontSize: 22, fontWeight: "600" },
-  chip: { marginLeft: "auto", paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, borderWidth: 0.5 },
-  chipText: { fontSize: 11, fontWeight: "500" },
-
-  metricsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: SURF,
-    borderRadius: 12,
-    borderWidth: 0.5,
-    borderColor: BORDER,
-    marginBottom: 14,
-    overflow: "hidden",
-  },
-  metricBox: { flex: 1, alignItems: "center", paddingVertical: 12 },
-  metricVal: { fontSize: 20, fontWeight: "600", color: TEXT },
-  metricLbl: { fontSize: 10, color: MUTED, marginTop: 2 },
-  metricDivider: { width: 0.5, height: 36, backgroundColor: BORDER },
-
-  summaryBox: { borderLeftWidth: 2.5, paddingLeft: 10, marginBottom: 14 },
-  summaryText: { fontSize: 12.5, color: SOFT, lineHeight: 20 },
-  
-  openUrlButton: {
-    backgroundColor: "#22c55e",
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginBottom: 14,
-    alignItems: "center",
-  },
-  openUrlButtonWarning: { backgroundColor: "#f97316" },
-  openUrlButtonDanger: { backgroundColor: "#ef4444" },
-  openUrlButtonText: { color: "#ffffff", fontSize: 14, fontWeight: "700" },
-  
-  reportPrompt: {
-    backgroundColor: "#fff7ed",
-    borderWidth: 0.5,
-    borderColor: "#fed7aa",
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 14,
-  },
-  reportTitle: { color: TEXT, fontSize: 14, fontWeight: "700", marginBottom: 4 },
-  reportText: { color: MUTED, fontSize: 12.5, lineHeight: 18, marginBottom: 10 },
-  reportButton: {
-    backgroundColor: "#f97316",
-    borderRadius: 10,
-    alignSelf: "flex-start",
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-  },
-  reportButtonDone: { backgroundColor: "#22c55e" },
-  reportButtonText: { color: "#ffffff", fontSize: 12.5, fontWeight: "700" },
-  advancedCard: {
-    backgroundColor: "#f8fafc",
-    borderWidth: 1,
-    borderColor: "#c7d2fe",
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 14,
-  },
-  advancedHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 },
-  advancedTitle: { color: TEXT, fontSize: 15, fontWeight: "700" },
-  advancedSubtitle: { color: MUTED, fontSize: 11.5, marginTop: 2 },
-  advancedStatusPill: {
-    backgroundColor: "#eef2ff",
-    borderRadius: 999,
-    borderWidth: 0.5,
-    borderColor: "#c7d2fe",
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-  },
-  advancedStatusText: { color: PURPLE, fontSize: 10, fontWeight: "800", letterSpacing: 0.6 },
-  advancedText: { color: MUTED, fontSize: 12.5, lineHeight: 18, flex: 1 },
-  advancedButton: {
-    backgroundColor: PURPLE,
-    borderRadius: 10,
-    alignSelf: "flex-start",
-    minHeight: 40,
-    minWidth: 148,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    marginTop: 10,
-  },
-  advancedButtonDisabled: { opacity: 0.75 },
-  advancedButtonText: { color: "#ffffff", fontSize: 12.5, fontWeight: "700" },
-  advancedError: { color: "#b91c1c", fontSize: 12.5, lineHeight: 18, marginTop: 8 },
-  advancedVerdictRow: { flexDirection: "row", alignItems: "center", gap: 9, marginBottom: 10 },
-  advancedVerdict: { fontSize: 20, fontWeight: "700" },
-  advancedScore: { marginLeft: "auto", color: MUTED, fontSize: 12, fontWeight: "700" },
-  previewImage: {
-    width: "100%",
-    height: 170,
-    borderRadius: 10,
-    borderWidth: 0.5,
-    borderColor: BORDER,
-    backgroundColor: SURF,
-    marginBottom: 12,
-  },
-  attackCard: { borderRadius: 12, borderWidth: 0.5, padding: 12, marginBottom: 4 },
-  attackHeader: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8 },
-  attackType: { flex: 1, fontSize: 15, fontWeight: "600", color: TEXT },
-  attackSeverityPill: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
-  attackSeverityText: { fontSize: 10, fontWeight: "700", letterSpacing: 0.8 },
-  attackHint: { fontSize: 12.5, lineHeight: 18 },
-  webRiskCard: {
-    backgroundColor: "#fef2f2",
-    borderRadius: 12,
-    borderWidth: 0.5,
-    borderColor: "#fecaca",
-    padding: 12,
-    marginBottom: 4,
-  },
-  webRiskTitle: { color: "#b91c1c", fontSize: 14, fontWeight: "700", marginBottom: 4 },
-  webRiskText: { color: TEXT, fontSize: 12.5, lineHeight: 18 },
-  communityReportCard: {
-    backgroundColor: "#fff7ed",
-    borderRadius: 12,
-    borderWidth: 0.5,
-    borderColor: "#fed7aa",
-    padding: 12,
-    marginBottom: 4,
-  },
-  communityReportTitle: { color: "#c2410c", fontSize: 14, fontWeight: "700", marginBottom: 4 },
-  communityReportText: { color: TEXT, fontSize: 12.5, lineHeight: 18 },
-
-  sectionLabel: {
-    fontSize: 10,
-    fontWeight: "600",
-    letterSpacing: 0.9,
-    textTransform: "uppercase",
-    color: MUTED,
-    marginTop: 14,
-    marginBottom: 8,
-  },
-  reasonRow: { flexDirection: "row", alignItems: "flex-start", gap: 8, marginBottom: 7 },
-  reasonDot: { width: 5, height: 5, borderRadius: 3, marginTop: 6, flexShrink: 0 },
-  reasonText: { fontSize: 12.5, color: SOFT, flex: 1, lineHeight: 19 },
-
-  toggleBtn: {
-    alignSelf: "center",
-    marginTop: 14,
-    paddingVertical: 7,
-    paddingHorizontal: 20,
-    borderRadius: 20,
-    borderWidth: 0.5,
-    borderColor: PURPLE,
-  },
-  toggleText: { color: "#4f46e5", fontSize: 13 },
-
-  contribRow: { marginBottom: 8 },
-  contribNameRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 3 },
-  contribName: { fontSize: 11, color: MUTED },
-  contribScore: { fontSize: 11 },
-  contribBarBg: { height: 4, backgroundColor: "#d1d5db", borderRadius: 3, overflow: "hidden" },
-  contribBarFill: { height: "100%", borderRadius: 3 },
-
-  modelCard: { backgroundColor: SURF, borderRadius: 10, borderWidth: 0.5, borderColor: BORDER, overflow: "hidden" },
-  modelRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderBottomWidth: 0.5,
-    borderBottomColor: BORDER,
-  },
-  modelName: { fontSize: 12, color: MUTED },
-  modelVal: { fontSize: 12, color: SOFT },
-
-  urlBox: { backgroundColor: SURF, borderRadius: 8, borderWidth: 0.5, borderColor: BORDER, padding: 10, marginTop: 2 },
-  urlText: { fontSize: 10.5, color: MUTED, lineHeight: 16 },
-
-  primaryBtn: {
-    backgroundColor: PURPLE,
-    borderRadius: 14,
-    paddingVertical: 13,
-    paddingHorizontal: 36,
-    marginTop: 4,
-    marginBottom: 4,
-  },
-  primaryBtnText: { color: TEXT, fontSize: 14, fontWeight: "600", textAlign: "center" },
-  scanAgainBtnText: { color: "#e5e7eb" },
-});

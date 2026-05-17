@@ -31,6 +31,7 @@ def normalize_expo_push_token(value):
 
 @advanced_scan_bp.post("/advanced-scan/start")
 def start_advanced_scan():
+    # ADVANCED SCAN ENTRY POINT: Create a pending sandbox-analysis job.
     cleanup_expired_advanced_scans()
     data = request.get_json(silent=True) or {}
     static_result = data.get("static_result") or {}
@@ -43,6 +44,7 @@ def start_advanced_scan():
     )
     target_url = (target_url or "").strip()
 
+    # SAFETY CHECK: Do not allow private/local/reserved network targets.
     validator = _app_module_attr("validate_advanced_scan_target", validate_advanced_scan_target)
     validation_error = validator(target_url)
     if validation_error:
@@ -64,6 +66,7 @@ def start_advanced_scan():
     if job is None:
         from advanced_scan_service import run_advanced_scan_job as job
 
+    # BACKGROUND WORKER: Return quickly while the sandbox scan runs asynchronously.
     if len(signature(job).parameters) == 1:
         worker = threading.Thread(target=job, args=(scan_id,), daemon=True)
     else:
@@ -75,6 +78,7 @@ def start_advanced_scan():
 
 @advanced_scan_bp.get("/advanced-scan/<scan_id>")
 def get_advanced_scan(scan_id):
+    # POLLING ENDPOINT: Mobile app calls this until the Advanced Scan completes.
     cleanup_expired_advanced_scans()
     scan_record = AdvancedScan.query.filter_by(scan_id=scan_id).first()
     if not scan_record:
@@ -85,6 +89,7 @@ def get_advanced_scan(scan_id):
 
 @advanced_scan_bp.get("/advanced-scan/<scan_id>/screenshot")
 def get_advanced_scan_screenshot(scan_id):
+    # SCREENSHOT ENDPOINT: Serve the browser screenshot captured by the sandbox.
     cleanup_expired_advanced_scans()
     scan_record = AdvancedScan.query.filter_by(scan_id=scan_id).first()
     if not scan_record or not scan_record.screenshot_blob:
