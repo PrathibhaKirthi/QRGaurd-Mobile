@@ -74,7 +74,7 @@ def classify_attack_type(features: dict, url: str) -> Dict[str, str]:
         "severity": "low" | "medium" | "high"
     }
     """
-    # ATTACK CLASSIFIER ENTRY POINT: Convert URL patterns into a named threat type.
+    # ATTACK CLASSIFIER ENTRY POINT
     normalized_url = (url or "").strip().lower()
     domain = _extract_domain(normalized_url)
 
@@ -97,29 +97,29 @@ def classify_attack_type(features: dict, url: str) -> Dict[str, str]:
     has_redirect_signal = "redirect" in normalized_url or query_markers >= 4
     has_exfiltration_signal = num_special_chars >= 6 or query_markers >= 7 or url_length >= 120
 
-    # HIGH SEVERITY: Fake brand plus login/account words suggests credential theft.
+    # HIGH SEVERITY
     if impersonated_brands and has_credential_keywords:
         return {"type": "Credential Harvesting", "severity": "high"}
 
-    # HIGH SEVERITY: Brand terms on suspicious domains indicate impersonation.
+    # HIGH SEVERITY
     if impersonated_brands and suspicious_brand_domain:
         return {"type": "Brand Impersonation", "severity": "high"}
 
-    # HIGH SEVERITY: Lookalike spellings such as paypa1 or g00gle are typosquatting.
+    # HIGH SEVERITY
     if _is_typosquatting_domain(domain) or (num_digits >= 2 and bool(impersonated_brands)):
         return {"type": "Typosquatting", "severity": "high"}
 
-    # HIGH SEVERITY: Very complex URLs can indicate data exfiltration or obfuscation.
+    # HIGH SEVERITY
     if has_exfiltration_signal:
         return {"type": "Data Exfiltration", "severity": "high"}
 
-    # MEDIUM SEVERITY: Redirect-like parameters may hide the final destination.
+    # MEDIUM SEVERITY
     if has_redirect_signal or any(keyword in normalized_url for keyword in REDIRECT_KEYWORDS):
         return {"type": "Malicious Redirect", "severity": "medium"}
 
-    # MEDIUM SEVERITY: Missing HTTPS or raw IPs are suspicious even without brand abuse.
+    # MEDIUM SEVERITY
     if (not has_https) or has_ip:
         return {"type": "Suspicious Link", "severity": "medium"}
 
-    # LOW SEVERITY: No strong suspicious pattern detected.
+    # LOW SEVERITY
     return {"type": "Legitimate", "severity": "low"}

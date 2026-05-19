@@ -1,24 +1,8 @@
-import re
 import socket
 from ipaddress import ip_address
 from urllib.parse import urlparse
 
 from config import REPORT_REASONS
-
-
-EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
-
-
-def validate_auth_payload(data):
-    email = (data.get("email") or "").strip().lower()
-    password = data.get("password") or ""
-
-    if not EMAIL_PATTERN.match(email):
-        return None, None, "Enter a valid email address."
-    if len(password) < 8:
-        return None, None, "Password must be at least 8 characters."
-
-    return email, password, None
 
 
 def is_valid_url(value):

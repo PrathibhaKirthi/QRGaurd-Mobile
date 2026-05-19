@@ -12,18 +12,12 @@ if load_dotenv:
     load_dotenv(os.path.join(os.path.dirname(__file__), ".env"), override=True)
 
 
-SECRET_KEY = os.environ.get(
-    "JWT_SECRET",
-    "change-this-dev-secret-before-deploying-qrguard",
-)
 SQLALCHEMY_DATABASE_URI = os.environ.get(
     "DATABASE_URL",
     f"sqlite:///{os.path.join(os.path.dirname(__file__), 'qrguard.db')}",
 )
 SQLALCHEMY_TRACK_MODIFICATIONS = False
 
-JWT_ALGORITHM = "HS256"
-JWT_EXP_HOURS = 24
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "http://172.20.10.3:5000")
 VALID_QR_TYPES = {"static"}
 

@@ -1,23 +1,10 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { clearCloudHistory, fetchCloudHistory, getToken, saveCloudHistoryItem } from "../src/services/api";
 
 const HISTORY_KEY = "scan_history";
 
-// HISTORY LOAD: Prefer cloud history when signed in, otherwise use local device storage.
+// HISTORY LOAD
 export async function getHistory() {
   try {
-    const token = await getToken();
-    if (token) {
-      try {
-        const cloudHistory = await fetchCloudHistory();
-        if (Array.isArray(cloudHistory)) {
-          return cloudHistory;
-        }
-      } catch (cloudError) {
-        console.warn("Cloud history unavailable, using local history:", cloudError);
-      }
-    }
-
     const storedHistory = await AsyncStorage.getItem(HISTORY_KEY);
 
     if (!storedHistory) {
@@ -32,7 +19,7 @@ export async function getHistory() {
   }
 }
 
-// STATIC SCAN HISTORY: Save normal QR scan results locally, then try cloud sync if signed in.
+// STATIC SCAN HISTORY
 export async function saveScan(result) {
   try {
     const existingHistory = await getHistory();
@@ -51,13 +38,6 @@ export async function saveScan(result) {
     const updatedHistory = [normalizedScan, ...existingHistory];
     await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(updatedHistory));
 
-    const token = await getToken();
-    if (token) {
-      saveCloudHistoryItem(normalizedScan).catch((error) => {
-        console.warn("Cloud history save failed:", error);
-      });
-    }
-
     return updatedHistory;
   } catch (error) {
     console.error("Failed to save scan history:", error);
@@ -65,7 +45,7 @@ export async function saveScan(result) {
   }
 }
 
-// ADVANCED SCAN HISTORY: Store dynamic sandbox evidence and verdict after Advanced Scan completes.
+// ADVANCED SCAN HISTORY
 export async function saveAdvancedScan(advancedScan, staticResult) {
   try {
     const existingHistory = await getHistory();
@@ -103,13 +83,6 @@ export async function saveAdvancedScan(advancedScan, staticResult) {
     const updatedHistory = [normalizedAdvancedScan, ...existingHistory];
     await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(updatedHistory));
 
-    const token = await getToken();
-    if (token) {
-      saveCloudHistoryItem(normalizedAdvancedScan).catch((error) => {
-        console.warn("Cloud advanced scan history save failed:", error);
-      });
-    }
-
     return updatedHistory;
   } catch (error) {
     console.error("Failed to save advanced scan to history:", error);
@@ -117,7 +90,7 @@ export async function saveAdvancedScan(advancedScan, staticResult) {
   }
 }
 
-// HISTORY LOOKUP: Used to retrieve a saved Advanced Scan result by scan id.
+// HISTORY LOOKUP
 export async function getAdvancedScanById(scanId) {
   try {
     const history = await getHistory();
@@ -128,18 +101,9 @@ export async function getAdvancedScanById(scanId) {
   }
 }
 
-// HISTORY CLEAR: Clear cloud history when available, then clear local AsyncStorage.
+// HISTORY CLEAR
 export async function clearHistory() {
   try {
-    const token = await getToken();
-    if (token) {
-      try {
-        await clearCloudHistory();
-      } catch (cloudError) {
-        console.warn("Cloud history clear failed:", cloudError);
-      }
-    }
-
     await AsyncStorage.removeItem(HISTORY_KEY);
   } catch (error) {
     console.error("Failed to clear scan history:", error);

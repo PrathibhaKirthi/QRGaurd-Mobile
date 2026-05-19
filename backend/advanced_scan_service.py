@@ -51,7 +51,7 @@ def post_json(url, payload, timeout_seconds, headers=None):
 
 
 def call_playwright_scanner(target_url):
-    # DYNAMIC EVIDENCE: Ask the Node/Playwright service to inspect page behaviour.
+    # DYNAMIC EVIDENCE
     return post_json(
         ADVANCED_SCANNER_URL,
         {"url": target_url, "interaction_mode": "safe_common"},
@@ -71,7 +71,7 @@ def build_gemini_prompt(evidence):
 
 
 def fallback_dynamic_analysis(evidence, reason):
-    # FALLBACK VERDICT: Used when Gemini is unavailable or fails.
+    # FALLBACK VERDICT
     signals = evidence.get("risk_signals") or []
     form_fields = evidence.get("form_fields") or []
     downloads = evidence.get("downloads") or []
@@ -108,7 +108,7 @@ def fallback_dynamic_analysis(evidence, reason):
 
 
 def call_gemini_analysis(evidence):
-    # GEMINI ANALYSIS: Summarize structured sandbox evidence into a verdict.
+    # GEMINI ANALYSIS
     if not GEMINI_API_KEY:
         return fallback_dynamic_analysis(evidence, "No Gemini API key is configured.")
 
@@ -162,7 +162,7 @@ def call_gemini_analysis(evidence):
 
 
 def send_expo_push_notification(expo_push_token, scan_id, llm_result):
-    # MOBILE NOTIFICATION: Tell the phone when Advanced Scan has completed.
+    # MOBILE NOTIFICATION
     if not expo_push_token:
         return
 
@@ -184,7 +184,7 @@ def send_expo_push_notification(expo_push_token, scan_id, llm_result):
 
 
 def run_advanced_scan_job(scan_id, flask_app=None):
-    # ADVANCED SCAN WORKER: Run Playwright, classify evidence, save result, notify app.
+    # ADVANCED SCAN WORKER
     if flask_app is None:
         app_module = sys.modules.get("app")
         flask_app = getattr(app_module, "app", None)

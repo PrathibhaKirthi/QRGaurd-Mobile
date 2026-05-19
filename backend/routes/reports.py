@@ -10,7 +10,7 @@ reports_bp = Blueprint("reports", __name__)
 
 @reports_bp.post("/reports")
 def create_suspicious_qr_report():
-    # USER REPORT ENTRY POINT: Store suspicious physical QR reports.
+    # USER REPORT ENTRY POINT
     payload, validation_error = normalize_report_payload(request.get_json(silent=True) or {})
     if validation_error:
         return jsonify({"error": validation_error}), 400
@@ -24,7 +24,7 @@ def create_suspicious_qr_report():
 
 @reports_bp.get("/reports/recent")
 def recent_suspicious_qr_reports():
-    # REVIEW ENDPOINT: Return recent suspicious QR reports.
+    # REVIEW ENDPOINT
     limit = request.args.get("limit", 25)
     try:
         limit = min(max(int(limit), 1), 100)

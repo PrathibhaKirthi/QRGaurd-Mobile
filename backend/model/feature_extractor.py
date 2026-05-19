@@ -10,7 +10,7 @@ def _get_domain(url: str) -> str:
 
 
 def extract_features(url: str) -> dict:
-    # FEATURE EXTRACTION: Turn a raw URL into measurable phishing indicators.
+    # FEATURE EXTRACTION
     url = (url or "").strip()
     domain = _get_domain(url).lower()
 
@@ -30,7 +30,7 @@ def extract_features(url: str) -> dict:
 
 
 def features_to_vector(features: dict) -> np.ndarray:
-    # MODEL INPUT: Keep feature order stable for the rules-based classifier.
+    # MODEL INPUT
     ordered = [
         features["url_length"],
         features["num_dots"],

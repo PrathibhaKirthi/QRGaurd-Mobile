@@ -42,7 +42,7 @@ import parseQRContent from "../utils/parseQRContent";
 import { PURPLE, SOFT, s } from "./ScannerScreen.styles";
 import type { AdvancedScan, BackendResult, ParsedQRContent } from "../types/scan";
 
-// LOCAL SAFE PATH: Used when a QR code is not a URL, so no phishing scan is required.
+// LOCAL SAFE PATH 
 const getLocalFeatureContributions = (content: ParsedQRContent) => {
   const prefixFeatureMap: Record<ParsedQRContent["type"], string> = {
     url: "HTTP/HTTPS prefix detected",
@@ -86,7 +86,7 @@ export default function ScannerScreen({
   onOpenGenerator,
   onOpenHistory,
 }: ScannerScreenProps) {
-  // SCREEN STATE: Main scanner, result, report, and Advanced Scan state live here.
+  // SCREEN STATE
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [result, setResult] = useState<BackendResult | null>(null);
@@ -109,14 +109,14 @@ export default function ScannerScreen({
   const pinchStartZoom = useRef(0);
   const advancedScanViewedRef = useRef<string | null>(null);
 
-  // CAMERA PERMISSION ENTRY POINT: Request permission before showing the scanner.
+  // CAMERA PERMISSION ENTRY POINT 
   useEffect(() => {
     if (!permission?.granted) {
       requestPermission();
     }
   }, [permission?.granted, requestPermission]);
 
-  // ADVANCED SCAN NOTIFICATIONS: Open completed sandbox scans from push notifications.
+  // ADVANCED SCAN NOTIFICATION 
   useEffect(() => {
     getLastAdvancedScanNotificationScanId()
       .then(async (scanId) => {
@@ -139,7 +139,7 @@ export default function ScannerScreen({
     return () => subscription.remove();
   }, []);
 
-  // ADVANCED SCAN POLLING: While pending, ask the backend every 5 seconds for the result.
+  // ADVANCED SCAN POLLING 
   useEffect(() => {
     if (!advancedScan?.scan_id || advancedScan.status !== "pending") {
       return;
@@ -163,7 +163,6 @@ export default function ScannerScreen({
     return () => clearInterval(interval);
   }, [advancedScan?.scan_id, advancedScan?.status]);
 
-  // ADVANCED SCAN VIEWED STATE: Mark a completed scan as viewed once the user sees it.
   useEffect(() => {
     if (advancedScan?.status !== "complete" || advancedScanViewedRef.current === advancedScan.scan_id) {
       return;
@@ -173,7 +172,7 @@ export default function ScannerScreen({
     markAdvancedScanViewed(advancedScan.scan_id).catch(() => {});
   }, [advancedScan?.scan_id, advancedScan?.status]);
 
-  // HISTORY SAVE: Store completed Advanced Scan results so they appear in scan history.
+  // HISTORY SAVE
   useEffect(() => {
     if (advancedScan?.status !== "complete" || !advancedScan?.llm_result) {
       return;
@@ -185,7 +184,6 @@ export default function ScannerScreen({
         onHistorySaved?.();
       })
       .catch(() => {
-        // Silently fail - we don't want to show an alert for every save
         console.error("Failed to save advanced scan to history");
       });
   }, [advancedScan?.scan_id, advancedScan?.status, advancedScan?.llm_result]);
@@ -248,7 +246,7 @@ export default function ScannerScreen({
     advancedScanViewedRef.current = null;
   };
 
-  // SCAN ENTRY POINT: Camera sends QR data here after detecting a QR code.
+  // SCAN ENTRY POINT
   const handleBarCodeScanned = async ({ data }: { data: string }) => {
     if (loading || scanned) return;
 
@@ -260,7 +258,7 @@ export default function ScannerScreen({
     const parsed = parseQRContent(data) as ParsedQRContent;
     setParsedContent(parsed);
 
-    // SAFE LOCAL RESULT: Non-URL QR codes are displayed locally and saved as safe content.
+    // SAFE LOCAL RESULT
     if (parsed.type !== "url") {
       try {
         await saveScan({
@@ -281,7 +279,7 @@ export default function ScannerScreen({
       return;
     }
 
-    // URL RISK ANALYSIS: URL QR codes go to the Flask backend for Safe/Suspicious/Unsafe scoring.
+    // URL RISK ANALYSIS
     try {
       const json = await scanURL(parsed.displayValue, parsed.type);
 
@@ -336,6 +334,7 @@ export default function ScannerScreen({
   const conf = result?.final?.confidence ?? 0;
   const xai = result?.explanation;
   const attack = result?.attack;
+  const hasDetectedAttack = !!attack && attack.type !== "Legitimate";
   const communityReports = result?.community_reports;
   const attackTheme = attack ? ATTACK_SEVERITY_THEME[attack.severity] : null;
   const googleWebRisk = result?.external_threat_intelligence?.google_web_risk;
@@ -368,7 +367,7 @@ export default function ScannerScreen({
   const advancedFields = advancedScan?.evidence?.form_fields ?? [];
   const scannedUrl = isUrlResult ? result?.qr_text ?? parsedContent?.displayValue : "";
 
-  // OPEN LINK GUARD: Suspicious or Unsafe links require explicit confirmation before opening.
+  // OPEN LINK GUARD
   const handleOpenURL = async () => {
     if (!scannedUrl) return;
 
@@ -392,7 +391,7 @@ export default function ScannerScreen({
         ]
       );
     } else {
-      // Safe URL - open directly
+      // Safe URL
       try {
         await Linking.openURL(scannedUrl);
       } catch {
@@ -401,7 +400,7 @@ export default function ScannerScreen({
     }
   };
 
-  // COMMUNITY REPORTING: Users can report suspicious physical QR codes for future intelligence.
+  // COMMUNITY REPORTING
   const handleSubmitReport = async () => {
     if (!result || !parsedContent) return;
 
@@ -429,7 +428,7 @@ export default function ScannerScreen({
     }
   };
 
-  // ADVANCED SCAN START: Runs dynamic sandbox analysis for the scanned URL.
+  // ADVANCED SCAN START
   const handleStartAdvancedScan = async () => {
     if (!result || !parsedContent) return;
 
@@ -725,7 +724,7 @@ export default function ScannerScreen({
             </View>
           ) : null}
 
-          {attack && attackTheme ? (
+          {hasDetectedAttack && attack && attackTheme ? (
             <>
               <Text style={s.sectionLabel}>Detected attack pattern</Text>
               <View style={[s.attackCard, { backgroundColor: attackTheme.bg, borderColor: attackTheme.border }]}>
@@ -810,10 +809,6 @@ export default function ScannerScreen({
                     val: `${result.rules_based?.status ?? "N/A"} — ${result.rules_based?.risk_score ?? 0}% risk`,
                   },
                   {
-                    name: "Transformer",
-                    val: `${result.transformer_based?.status ?? "N/A"} — ${result.transformer_based?.risk_score ?? 0}% risk`,
-                  },
-                  {
                     name: "Google Web Risk",
                     val: googleWebRisk
                       ? googleWebRisk.matched
@@ -832,7 +827,7 @@ export default function ScannerScreen({
                     accent: theme.soft,
                   },
                 ].map((model, index) => (
-                  <View key={model.name} style={[s.modelRow, index === 3 && { borderBottomWidth: 0 }]}>
+                  <View key={model.name} style={[s.modelRow, index === 2 && { borderBottomWidth: 0 }]}>
                     <Text style={s.modelName}>{model.name}</Text>
                     <Text style={[s.modelVal, model.accent ? { color: model.accent } : null]}>{model.val}</Text>
                   </View>

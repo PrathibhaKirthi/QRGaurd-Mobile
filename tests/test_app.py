@@ -148,44 +148,6 @@ def test_two_community_reports_mark_scan_unsafe(client):
     assert "shared suspicious QR database" in data["explanation"]["summary"]
 
 
-def test_authenticated_user_can_store_cloud_scan_history(client):
-    auth_response = client.post(
-        "/auth/register",
-        json={"email": "prathibhakirthi@gmail.com", "password": "pass6789"},
-    )
-    token = auth_response.get_json()["token"]
-
-    create_response = client.post(
-        "/history",
-        headers={"Authorization": f"Bearer {token}"},
-        json={
-            "url": "https://www.google.com",
-            "scan_type": "url",
-            "status": "Safe",
-            "risk_score": 5,
-            "confidence": 95,
-            "explanation_summary": "Safe test scan.",
-        },
-    )
-
-    assert create_response.status_code == 201
-
-    list_response = client.get("/history", headers={"Authorization": f"Bearer {token}"})
-    data = list_response.get_json()
-
-    assert list_response.status_code == 200
-    assert len(data["history"]) == 1
-    assert data["history"][0]["url"] == "https://www.google.com"
-    assert data["history"][0]["storage_scope"] == "cloud"
-
-
-def test_cloud_scan_history_requires_login(client):
-    response = client.get("/history")
-
-    assert response.status_code == 401
-    assert response.get_json()["error"] == "Authentication required."
-
-
 def test_advanced_scan_start_creates_pending_job(client, monkeypatch):
     import app as flask_app
 

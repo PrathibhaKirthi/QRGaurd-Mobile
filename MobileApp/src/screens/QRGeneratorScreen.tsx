@@ -33,7 +33,7 @@ type QRGeneratorScreenProps = {
   onBack: () => void;
 };
 
-// INPUT NORMALIZATION: Add https:// when the user enters a domain without a protocol.
+// INPUT NORMALIZATION
 function normalizeUrl(value: string) {
   const trimmed = value.trim();
   if (!trimmed) return "";
@@ -41,7 +41,7 @@ function normalizeUrl(value: string) {
   return `https://${trimmed}`;
 }
 
-// URL VALIDATION: Only HTTP and HTTPS destinations can be converted into QR codes.
+// URL VALIDATION
 function isValidUrl(value: string) {
   try {
     const parsed = new URL(value);
@@ -64,7 +64,7 @@ function getDomain(value: string) {
   }
 }
 
-// LOCAL WARNINGS: Extra user-facing notes shown after the backend safety check.
+// LOCAL WARNINGS
 function getStaticWarnings(value: string, scanResult: BackendResult | null) {
   const warnings: string[] = [];
   try {
@@ -98,7 +98,7 @@ function formatGeneratedAt(value: string) {
   } catch {
     return value;
   }
-}
+}//formats the qr generation timestamp into a readeable date and time.
 
 export default function QRGeneratorScreen({ initialError = "", initialUrl = "", onBack }: QRGeneratorScreenProps) {
   const [url, setUrl] = useState(initialUrl);
@@ -112,7 +112,7 @@ export default function QRGeneratorScreen({ initialError = "", initialUrl = "", 
   const safetyStatus = safetyResult?.final?.status ?? "Unknown";
   const staticWarnings = generatedUrl ? getStaticWarnings(generatedUrl, safetyResult) : [];
 
-  // SAFE QR GENERATION GATE: Generate only after QRGuard backend returns a Safe verdict.
+  // SAFE QR GENERATION GATE
   const generateAfterSafetyCheck = async (value: string) => {
     const normalized = normalizeUrl(value);
     setGeneratedUrl("");
@@ -158,7 +158,7 @@ export default function QRGeneratorScreen({ initialError = "", initialUrl = "", 
     }
   };
 
-  useEffect(() => {
+  useEffect(() => { //screen opened with an inital URL or error, automatically fills the form.
     if (initialUrl) {
       const normalized = normalizeUrl(initialUrl);
       setUrl(normalized);
@@ -178,8 +178,8 @@ export default function QRGeneratorScreen({ initialError = "", initialUrl = "", 
     generateAfterSafetyCheck(url);
   };
 
-  // EXPORT FLOW: Capture the generated QR card as an image and share it.
-  const handleShareCard = async () => {
+  // EXPORT FLOW
+  const handleShareCard = async () => { //captures the QR card as an image and opens the phone's share/export menu. 
     if (!generatedUrl || !cardRef.current) {
       Alert.alert("Generate QR Code", "Generate a QR code before sharing.");
       return;
@@ -208,7 +208,7 @@ export default function QRGeneratorScreen({ initialError = "", initialUrl = "", 
     }
   };
 
-  return (
+  return ( //UI layout for QR Generator screen.
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       style={s.root}

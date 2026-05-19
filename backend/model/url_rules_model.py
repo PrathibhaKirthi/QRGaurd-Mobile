@@ -21,7 +21,7 @@ def _is_allowed_brand_domain(hostname, brand):
 
 
 def _brand_impersonation_signals(url):
-    # BRAND CHECK: Detect trusted brand names used outside their allowed domains.
+    
     normalized_url = (url or "").lower()
     hostname = _extract_hostname(normalized_url)
     compact_host = hostname.replace("-", "").replace(".", "")
@@ -51,12 +51,10 @@ def _brand_impersonation_signals(url):
 
 
 def rules_predict_safe_unsafe(features, url):
-    # RULES MODEL ENTRY POINT: Add risk points for suspicious URL signals.
+    # RULES MODEL ENTRY POINT
     f = features.flatten()
 
     score = 0
-
-    # unpack features
     url_length = f[0]
     num_dots = f[1]
     has_https = f[2]
@@ -69,7 +67,7 @@ def rules_predict_safe_unsafe(features, url):
     digits = f[9]
     domain_length = f[10]
 
-    # URL STRUCTURE RULES: Higher score means more phishing indicators.
+    # URL STRUCTURE RULES
     if has_ip:
         score += 3
     if has_at:
@@ -83,9 +81,9 @@ def rules_predict_safe_unsafe(features, url):
     if num_dots > 4:
         score += 1
     if digits > 6:
-        score += 1
+        score += 1 
 
-    # BRAND IMPERSONATION RULES: Strongly penalize fake PayPal/Google/etc. domains.
+    # BRAND IMPERSONATION RULES
     brand_signals = _brand_impersonation_signals(url)
     if brand_signals["impersonated_brands"]:
         score += 5
@@ -96,7 +94,7 @@ def rules_predict_safe_unsafe(features, url):
     if brand_signals["has_subdomain_abuse"]:
         score += 3
 
-    # SAFE/SUSPICIOUS/UNSAFE THRESHOLDS: Convert rule points into a normalized risk label.
+    # SAFE/SUSPICIOUS/UNSAFE THRESHOLDS
     risk_score = min(score / 10, 1)
     if score >= 6:
         return "Unsafe", 0.9, risk_score

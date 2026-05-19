@@ -23,7 +23,7 @@ const parseQueryString = (query) =>
 
 const buildDisplayValue = (values) => values.filter(Boolean).join("\n").trim();
 
-// NON-URL QR TYPE: Extract email, subject, and body from mailto QR codes.
+// NON-URL QR TYPE
 const parseEmail = (rawText) => {
   const emailPart = rawText.slice("mailto:".length);
   const [email, query] = splitOnce(emailPart, "?");
@@ -40,7 +40,7 @@ const parseEmail = (rawText) => {
   };
 };
 
-// NON-URL QR TYPE: Extract a phone number from tel QR codes.
+// NON-URL QR TYPE
 const parsePhone = (rawText) => {
   const phone = decodeValue(rawText.slice("tel:".length));
 
@@ -51,7 +51,7 @@ const parsePhone = (rawText) => {
   };
 };
 
-// NON-URL QR TYPE: Extract phone and message from sms/smsto QR codes.
+// NON-URL QR TYPE
 const parseSms = (rawText) => {
   const normalized = rawText.startsWith("smsto:") ? rawText.slice("smsto:".length) : rawText.slice("sms:".length);
 
@@ -81,7 +81,7 @@ const parseSms = (rawText) => {
   };
 };
 
-// NON-URL QR TYPE: Extract latitude and longitude from geo QR codes.
+// NON-URL QR TYPE.
 const parseLocation = (rawText) => {
   const coordinates = rawText.slice("geo:".length).split("?", 1)[0];
   const [latitude = "", longitude = ""] = coordinates.split(",");
@@ -96,7 +96,7 @@ const parseLocation = (rawText) => {
   };
 };
 
-// NON-URL QR TYPE: Extract basic contact information from MECARD QR codes.
+// NON-URL QR TYPE
 const parseMeCard = (rawText) => {
   const body = rawText.slice("MECARD:".length);
   const fields = body.split(";").reduce((accumulator, part) => {
@@ -118,7 +118,7 @@ const parseMeCard = (rawText) => {
   };
 };
 
-// NON-URL QR TYPE: Extract basic contact information from vCard QR codes.
+// NON-URL QR TYPE
 const parseVCard = (rawText) => {
   const fields = rawText.split(/\r?\n/).reduce((accumulator, line) => {
     const [keyPart, value] = splitOnce(line, ":");
@@ -140,7 +140,7 @@ const parseVCard = (rawText) => {
   };
 };
 
-// NON-URL QR TYPE: Extract event summary, date, and location from calendar QR codes.
+// NON-URL QR TYPE
 const parseCalendar = (rawText) => {
   const fields = rawText.split(/\r?\n/).reduce((accumulator, line) => {
     const [keyPart, value] = splitOnce(line, ":");
@@ -162,7 +162,7 @@ const parseCalendar = (rawText) => {
   };
 };
 
-// QR CONTENT ENTRY POINT: Decide whether the QR is a URL or local content type.
+// QR CONTENT ENTRY POINT
 export const parseQRContent = (rawText) => {
   const normalized = (rawText || "").trim();
   const lowerValue = normalized.toLowerCase();

@@ -62,7 +62,7 @@ def _compute_contributions(features: dict) -> list[dict]:
     Compute a signed contribution score for each feature.
     Returns a list of dicts sorted by absolute contribution (descending).
     """
-    # EXPLAINABILITY ENGINE: Rank the strongest safety/risk signals for the UI.
+    # EXPLAINABILITY ENGINE
     contributions = []
 
     f = features  
@@ -178,7 +178,6 @@ def _compute_contributions(features: dict) -> list[dict]:
                                "contribution": FEATURE_WEIGHTS["domain_length"] * domain_len,
                                "tier": "medium"})
 
-    # Sort: risk contributors first (positive contribution, descending), safe last
     contributions.sort(key=lambda x: x["contribution"], reverse=True)
     return contributions
 
@@ -225,7 +224,7 @@ def explain(features: dict, fused_risk: float, status: str, top_n: int = 4) -> d
           ]
         }
     """
-    # XAI ENTRY POINT: Build the summary, reasons, and feature contribution list.
+    # XAI ENTRY POINT
     contributions = _compute_contributions(features)
 
     reasons = []
@@ -244,7 +243,6 @@ def explain(features: dict, fused_risk: float, status: str, top_n: int = 4) -> d
 
     summary = _summary_sentence(fused_risk, status)
 
-    # Simplified contribution list for API response (drop internal fields)
     contribution_summary = [
         {
             "feature": c["feature"],

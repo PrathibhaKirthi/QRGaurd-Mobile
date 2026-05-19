@@ -27,7 +27,6 @@ export type BackendResult = {
     };
   };
   rules_based?: { status: string; risk_score: number };
-  transformer_based?: { status: string; risk_score: number };
   explanation?: Explanation;
   attack?: AttackInfo;
 };

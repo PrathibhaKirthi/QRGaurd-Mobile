@@ -10,7 +10,6 @@ import {
   View,
 } from "react-native";
 import { clearHistory, getHistory } from "../../storage/historyStorage";
-import { getToken } from "../services/api";
 import type { BackendResult } from "../types/scan";
 
 const BG = "#ecf0f5";
@@ -65,12 +64,10 @@ export default function HistoryScreen({ onBack, refreshKey = 0 }: Props) {
   const [history, setHistory] = useState<DisplayHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedItem, setSelectedItem] = useState<DisplayHistoryItem | null>(null);
-  const [cloudBacked, setCloudBacked] = useState(false);
 
   const loadHistory = async () => {
     try {
       setLoading(true);
-      setCloudBacked(Boolean(await getToken()));
       const storedHistory = await getHistory();
       setHistory(storedHistory);
     } catch (error) {
@@ -88,9 +85,7 @@ export default function HistoryScreen({ onBack, refreshKey = 0 }: Props) {
   const handleClearHistory = () => {
     Alert.alert(
       "Clear History",
-      cloudBacked
-        ? "This will remove saved scan results from your cloud account and this device."
-        : "This will remove all saved scan results from local storage.",
+      "This will remove all saved scan results from local storage.",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -117,7 +112,7 @@ export default function HistoryScreen({ onBack, refreshKey = 0 }: Props) {
 
     if (verdict === "Unsafe" || verdict === "Suspicious") {
       Alert.alert(
-        "⚠️ Warning",
+        " Warning",
         `This URL was marked as ${verdict.toLowerCase()}. Opening it may be risky. Are you sure?`,
         [
           { text: "Cancel", style: "cancel" },
@@ -215,7 +210,7 @@ export default function HistoryScreen({ onBack, refreshKey = 0 }: Props) {
               onPress={() => handleOpenURL(selectedItem)}
             >
               <Text style={styles.openUrlButtonText}>
-                {selectedItem.verdict === "Safe" ? "🔗 Open URL" : "⚠️ Open URL"}
+                {selectedItem.verdict === "Safe" ? " Open URL" : " Open URL"}
               </Text>
             </TouchableOpacity>
           ) : null}
@@ -237,9 +232,7 @@ export default function HistoryScreen({ onBack, refreshKey = 0 }: Props) {
       </View>
 
       <Text style={styles.scopeText}>
-        {cloudBacked
-          ? "Showing cloud scan history for your signed-in account."
-          : "Showing local scan history on this device. Sign in to sync scans across devices."}
+        Showing local scan history on this device.
       </Text>
 
       {loading ? (

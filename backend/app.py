@@ -8,9 +8,8 @@ from advanced_scan_service import (
     cleanup_expired_advanced_scans,
     run_advanced_scan_job,
 )
-from auth import create_token, get_bearer_token, get_user_from_token, require_auth
 from extensions import db
-from models import AdvancedScan, ScanHistory, SuspiciousQRReport, User
+from models import AdvancedScan, SuspiciousQRReport
 from routes import register_routes
 from scan_service import (
     apply_report_intelligence,
@@ -25,7 +24,6 @@ from validation import (
     is_valid_url,
     normalize_report_payload,
     validate_advanced_scan_target,
-    validate_auth_payload,
 )
 from web_utils import get_public_base_url
 
